@@ -1,12 +1,14 @@
-# Creator Canvas architecture and canvas document v1
+# Creator Canvas architecture and draft-based project document v1
 
 Status: MVP architecture decision for JIM-11.
 
-The canvas document is the durable source of truth shared by the CLI, Codex
-creation skill, and preview. The CLI is the only writer. The skill plans work
-and invokes the CLI; it does not edit JSON itself. The preview reads the same
-document and project-local assets; it does not run providers or receive
-credentials.
+The project document is the durable source of truth shared by the CLI, Codex
+creation skill, and preview. A project owns one or more drafts; each draft is an
+independent editable canvas with its own graph, jobs, and revision, while assets
+are shared by the project. The CLI is the only writer. The skill plans work and
+invokes the CLI; it does not edit JSON itself. The preview selects and reads one
+draft from the same document and project-local assets; it does not run providers
+or receive credentials.
 
 This decision deliberately stops before scaffolding TypeScript packages or UI.
 The machine-readable v1 contract is
@@ -17,9 +19,10 @@ The machine-readable v1 contract is
 
 | MVP requirement | Architecture decision |
 | --- | --- |
-| One model for CLI, skill, and preview | A versioned `canvas.json` is the only durable graph, execution, route, and asset metadata store. |
-| Three-shot graph | `shot` nodes are ordered with `sequence` edges and feed a `composition` through `dependency` edges. |
-| Targeted follow-up edits | Only the edited node and transitive `dependency` descendants become `dirty`; `sequence` edges never propagate invalidation. |
+| One model for CLI, skill, and preview | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
+| Draft-based creation | A project has one or more switchable drafts; each draft owns an independent canvas and may record the draft it was copied from. |
+| Three-shot graph | Within a draft, `shot` nodes are ordered with `sequence` edges and feed a `composition` through `dependency` edges. |
+| Targeted follow-up edits | Only the edited node and transitive `dependency` descendants in the selected draft become `dirty`; other drafts are unchanged. |
 | Observable generation | Nodes expose current execution state while jobs retain attempt history and normalized provider state. |
 | Restart-safe providers | The resolved route and provider job ID are persisted on the job before subsequent polling. |
 | Durable assets | Provider artifacts are streamed into a project-local, content-addressed asset store before their metadata is committed. |
@@ -54,23 +57,43 @@ closed to unknown fields (`additionalProperties: false`). A future incompatible
 shape requires a new integer `schemaVersion`, schema file, explicit migration,
 and fixture. Readers must reject unsupported versions rather than guess.
 
-## Document and identity rules
+## Project, draft, and identity rules
 
-`canvas.json` contains:
+`project.json` contains:
 
 - `schemaVersion`: the document format version, currently `1`.
-- `revision`: a monotonically increasing optimistic-concurrency revision. Each
-  successful CLI transaction increments it exactly once.
+- `revision`: the project-wide optimistic-concurrency revision. Every successful
+  CLI transaction increments it exactly once.
 - `project`: stable project identity and display metadata.
-- `nodes` and `edges`: the user-visible graph.
-- `jobs`: normalized generation attempt records.
-- `assets`: metadata for immutable local blobs.
+- `activeDraftId`: the draft selected by default for CLI and preview commands.
+- `drafts`: one or more independent editable canvases. A draft owns its
+  `revision`, optional `sourceDraftId`, `nodes`, `edges`, and `jobs`.
+- `assets`: project-shared metadata for immutable local blobs.
 
-All graph and attempt identities are lowercase, type-prefixed UUIDv7s generated
-client-side: `project_<uuid>`, `node_<uuid>`, `edge_<uuid>`, and `job_<uuid>`.
-They never depend on array position, label, path, or provider identity. Renaming
-or moving a node preserves its ID. A retry creates a new job ID; a resumed poll
-preserves the existing one because its job ID is the provider idempotency key.
+Project and draft identities are lowercase, type-prefixed UUIDv7s generated
+client-side: `project_<uuid>` and `draft_<uuid>`. Node, edge, and job IDs use the
+same rule inside a draft: `node_<uuid>`, `edge_<uuid>`, and `job_<uuid>`. Their
+canonical address is `(draftId, localId)`, so local IDs need only be unique
+inside their draft. They never depend on array position, label, path, or
+provider identity. Renaming or moving a node preserves its ID. A retry creates
+a new job ID; a resumed poll preserves the existing one because its job ID is
+the provider idempotency key.
+
+Copying a draft creates a fresh `draftId`, records `sourceDraftId`, and copies
+the graph, job history, and current executions as a snapshot. Local node, edge,
+and job IDs are preserved because the new draft is a separate namespace. This
+lets unchanged nodes immediately reuse their valid project-shared output assets.
+Queued or running executions are the exception: their jobs remain copied as
+history, but the corresponding execution in the copy becomes `dirty` with no
+active job because provider work belongs to the source draft. The copied draft
+then evolves independently: an edit increments only its draft revision and
+never mutates its source. Draft deletion and multi-level history navigation are
+outside MVP scope.
+
+CLI commands that mutate, generate, inspect status, preview, or export resolve
+one draft. They accept an explicit draft ID; commands intended for interactive
+use may default to `activeDraftId`. Export records and reports the selected
+draft ID so two variations can never be confused.
 
 Asset identity is content-derived:
 `asset_sha256_<lowercase SHA-256 digest>`. Asset bytes are immutable, so equal
@@ -80,13 +103,15 @@ integrity checks. Referential integrity, ID uniqueness, and asset-ID/checksum
 agreement are semantic invariants checked by the core in addition to JSON
 Schema validation.
 
-Asset `origin` is either `{ kind: "job", jobId }` for generated/composed bytes
-or `{ kind: "import" }` for user-supplied bytes copied into the asset store.
-Origin is provenance only and does not affect content identity.
+Asset `origin` is either `{ kind: "job", draftId, jobId }` for
+generated/composed bytes or `{ kind: "import" }` for user-supplied bytes copied
+into the asset store. The draft-qualified job address remains unambiguous after
+a draft is copied. Origin is provenance only and does not affect content
+identity.
 
 ## Graph contract
 
-Version 1 has two node kinds:
+Each draft in version 1 has two node kinds:
 
 - `shot`: a generation request with a prompt, media kind, optional immutable
   asset inputs, normalized output requirements, and optional routing hints.
@@ -94,9 +119,10 @@ Version 1 has two node kinds:
   sequence order.
 
 Every node has presentation fields (`title`, `position`) and a `specRevision`.
-Changing only presentation fields increments the document revision but does
-not increment `specRevision` or invalidate generation. Changing `spec`
-increments `specRevision` and triggers invalidation.
+Changing only presentation fields increments the selected draft revision and
+project revision but does not increment `specRevision` or invalidate
+generation. Changing `spec` increments `specRevision` and triggers invalidation
+inside that draft.
 
 Edges are directed `sourceNodeId -> targetNodeId` and have distinct semantics:
 
@@ -106,7 +132,8 @@ Edges are directed `sourceNodeId -> targetNodeId` and have distinct semantics:
   composition order but do not imply data dependency and do not propagate
   invalidation.
 
-Duplicate `(kind, sourceNodeId, targetNodeId)` edges and self-edges are invalid.
+Edges and jobs cannot reference nodes from another draft. Duplicate `(kind,
+sourceNodeId, targetNodeId)` edges and self-edges are invalid.
 Dependency edges must be acyclic; v1 dependency edges terminate at a
 composition and sequence edges connect shots. For an exportable project, the
 shots feeding a composition must form one unambiguous sequence chain;
@@ -155,8 +182,9 @@ Garbage collection and cancellation are outside MVP scope.
 
 The core computes each node's `inputFingerprint` as SHA-256 over canonical
 UTF-8 JSON. Object keys are recursively sorted, array order is preserved, and
-presentation fields, timestamps, execution state, and document revision are
-excluded.
+presentation fields, timestamps, execution state, project/draft IDs, and
+revisions are excluded. Therefore an unchanged node keeps the same fingerprint
+when its draft is copied and can safely reuse the same immutable output asset.
 
 For a shot, the fingerprint input contains:
 
@@ -197,30 +225,36 @@ follow the validated shot sequence, never node or edge array order. The checked-
 in examples contain fingerprints produced from these payloads rather than
 synthetic digest values.
 
-A mutation is one locked transaction:
+A draft mutation is one locked project transaction:
 
-1. Validate the requested patch and load the expected document revision.
+1. Resolve the explicit `draftId` (or `activeDraftId` only when the command
+   allows that default), validate the patch, and load the expected project and
+   draft revisions.
 2. Apply it in memory. For a spec edit, increment only that node's
-   `specRevision`.
+   `specRevision` in the selected draft.
 3. Find the affected set: the edited node plus all nodes reachable from it by
    outbound `dependency` edges. A presentation-only edit has an empty affected
    set.
 4. Recompute fingerprints in dependency-topological order. Set every affected
    execution to `dirty`, remove `activeJobId`, and clear current
    `outputAssetIds`. Do not delete jobs or assets.
-5. Validate the complete document, increment its revision once, update
-   `project.updatedAt`, and atomically replace `canvas.json`.
+5. Validate the complete document, increment the selected draft revision and
+   project revision once, update both timestamps, and atomically replace
+   `project.json`. No other draft changes.
 
 If an invalidated provider attempt later completes, its job may be updated for
-history and its blob may be materialized, but the result attaches to the node
-only when both `activeJobId` and `inputFingerprint` still match. This prevents a
-late response from overwriting a newer prompt.
+history and its blob may be materialized, but the result attaches only to the
+addressed draft and node when `draftId`, `activeJobId`, and `inputFingerprint`
+all still match. This prevents a late response from overwriting a newer prompt
+or attaching to a copied draft that shares the same local IDs.
 
-For the acceptance edit, changing shot 2's prompt to include night increments
-only shot 2's `specRevision`. Shot 2 and the composition become `dirty`; shots
-1 and 3 retain their successful executions because sequence edges do not
-propagate invalidation. `docs/examples/canvas-v1-shot2-night.json` demonstrates
-that state while preserving the superseded shot-2 and composition jobs.
+For the acceptance edit, the CLI first copies the main draft to a night
+variation and selects it. Changing shot 2's prompt increments only the copied
+draft and shot 2's `specRevision`. Shot 2 and the composition become `dirty` in
+the copy; shots 1 and 3 retain their successful executions because sequence
+edges do not propagate invalidation. The main draft stays byte-for-byte
+unchanged. `docs/examples/canvas-v1-shot2-night.json` demonstrates both drafts,
+their lineage, shared assets, and the targeted invalidation.
 
 ## Storage boundaries
 
@@ -228,24 +262,25 @@ The project directory is the persistence boundary:
 
 ```text
 <project>/
-  canvas.json                         # canonical metadata and graph
-  assets/sha256/<digest>              # immutable generated/imported bytes
+  project.json                        # project, drafts, graphs, jobs, asset metadata
+  assets/sha256/<digest>              # immutable project-shared bytes
   .creator-canvas/lock                # transient single-writer lock
   .creator-canvas/tmp/                # transient same-filesystem writes/downloads
 ```
 
-`canvas.json` stores only project-relative asset paths using `/` separators.
+`project.json` stores only project-relative asset paths using `/` separators.
 Absolute paths, `..` traversal, remote URLs, provider artifact locators,
 authorization material, and signed URLs are invalid. Imported and generated
 bytes are copied or streamed into `assets/` before the document references
 them. The CLI verifies byte length and checksum on read/export.
 
-Writes use a project-local lock and optimistic `revision` check. The CLI writes
-and fsyncs a temporary file in `.creator-canvas/tmp/`, validates it, then
-renames it over `canvas.json` on the same filesystem. A lock file and temporary
-files are operational state, never document truth. The preview watches
-`canvas.json`, reloads only after a successful parse/validation, and keeps its
-last valid snapshot during a partial or rejected read.
+Writes use a project-local lock plus project and selected-draft revision checks.
+The CLI writes and fsyncs a temporary file in `.creator-canvas/tmp/`, validates
+it, then renames it over `project.json` on the same filesystem. A lock file and
+temporary files are operational state, never document truth. The preview
+watches `project.json`, selects `activeDraftId` unless given an explicit draft,
+reloads only after a successful parse/validation, and keeps its last valid
+snapshot during a partial or rejected read.
 
 Credentials are resolved from the selected provider's local environment
 variable only inside the CLI immediately before adapter I/O. Credential values,
@@ -254,38 +289,51 @@ project file, fixture, error, log, or preview payload.
 
 ## Normative examples
 
-`docs/examples/canvas-v1-three-shot.json` is a completed three-shot project:
-three successful shot nodes, one successful composition, sequence edges for
-order, dependency edges for data flow, normalized jobs, and content-addressed
-assets.
+`docs/examples/canvas-v1-three-shot.json` is a completed project with one main
+draft: three successful shot nodes, one successful composition, sequence edges
+for order, dependency edges for data flow, normalized jobs, and project-shared
+content-addressed assets.
 
-`docs/examples/canvas-v1-shot2-night.json` is the result immediately after the
-follow-up edit. It proves that:
+`docs/examples/canvas-v1-shot2-night.json` is the same project after copying the
+main draft and applying the follow-up edit to the copy. It proves that:
 
-- the document revision and shot 2 `specRevision` advance;
-- shot 2 and the composition are dirty with new fingerprints;
-- shots 1 and 3 remain succeeded with the same jobs and assets; and
-- superseded jobs and asset provenance remain available but are not current.
+- both the unchanged main draft and selected night variation coexist;
+- the variation records `sourceDraftId`, while draft-local IDs remain scoped;
+- only the project revision, copied draft revision, and shot 2 `specRevision`
+  advance;
+- shot 2 and the composition are dirty only in the copy;
+- shots 1 and 3 remain succeeded with the same job snapshot and shared assets;
+  and
+- the source draft and asset provenance remain unchanged.
 
 ## Verification criteria
 
 The JIM-8 implementation must turn these into automated tests:
 
-1. Both checked-in examples pass Draft 2020-12 schema validation.
-2. Every ID is unique within its type, every reference resolves, and every
+1. Both checked-in examples pass Draft 2020-12 schema validation and contain at
+   least one draft; `activeDraftId` and every `sourceDraftId` resolve.
+2. Project/draft IDs are unique; graph/job IDs are unique within their draft;
+   every draft-local reference resolves without crossing drafts; and every
    asset ID agrees with its checksum and project-relative path.
-3. Dependency and sequence graphs satisfy the invariants above.
+3. Dependency and sequence graphs satisfy the invariants above independently
+   in every draft.
 4. Job and execution cross-field rules and allowed state transitions reject
    impossible states.
-5. An edit with an incorrect document revision fails without changing disk.
+5. An edit with an incorrect project or draft revision fails without changing
+   disk.
 6. A presentation-only edit changes no fingerprint or execution state.
-7. Changing shot 2 to night dirties exactly shot 2 and the composition.
-8. A stale provider completion cannot attach outputs to an invalidated node.
-9. A same-filesystem atomic save is either wholly old or wholly new after a
+7. Copying a draft preserves its valid execution snapshot and shared asset IDs,
+   assigns a new draft ID, and leaves the source unchanged.
+8. Changing shot 2 to night dirties exactly shot 2 and the composition in the
+   copy; no node in the source draft changes.
+9. A stale provider completion cannot attach outputs to an invalidated node or
+   to a node with the same local ID in another draft.
+10. A same-filesystem atomic save is either wholly old or wholly new after a
    simulated interruption.
-10. A document containing a credential value, absolute/traversing asset path,
+11. A document containing a credential value, absolute/traversing asset path,
     remote URL, unknown field, or unsupported schema version is rejected.
 
-For this specification-only change, validation consists of parsing the schema
-and examples, validating both examples with a Draft 2020-12 validator, checking
-the targeted-invalidation assertions above, and running `git diff --check`.
+For this specification-only change, `docs/schema/verify-examples.py` validates
+the schema and examples, draft-local references and fingerprints, copy lineage,
+source isolation, project-shared assets, and targeted invalidation. Repository
+verification also runs `git diff --check`.

@@ -2,7 +2,7 @@
 
 ## Task summary
 
-Build a new AI video creation product around an infinite canvas. Users create and revise videos from Codex with natural-language prompts. A first-party CLI mutates the canvas document and invokes image/video providers with user-owned API keys. A standalone preview renders the graph, job states, and generated assets.
+Build a new AI video creation product around an infinite canvas. Users create and revise videos from Codex with natural-language prompts. Each project owns one or more switchable drafts; every draft is an independent editable canvas, while generated and imported assets are shared by the project. A first-party CLI mutates the project document and invokes image/video providers with user-owned API keys. A standalone preview renders the selected draft's graph, job states, and generated assets.
 
 ## Confirmed scope
 
@@ -15,13 +15,13 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 ## Core user loop
 
 1. The user describes a video in Codex.
-2. The skill plans a script and shot graph.
-3. The CLI creates nodes and edges in the shared canvas document.
+2. The skill plans a script and shot graph in a new or selected draft.
+3. The CLI creates nodes and edges in that draft within the shared project document.
 4. The routing layer selects a configured image or video provider unless the prompt overrides the strategy.
 5. Jobs run with user-owned credentials.
 6. The preview shows relationships, state, parameters, and assets.
-7. A follow-up prompt updates only the affected subgraph.
-8. The user exports the result.
+7. A follow-up may copy a draft to create a variation, then updates only the affected subgraph in that draft.
+8. The user exports an explicitly selected draft.
 
 ## Product rules
 
@@ -34,7 +34,7 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 
 ## Acceptance scenario
 
-Given the prompt `Create a three-shot science-fiction short`, the system creates a three-shot graph, invokes configured generation adapters, and displays outputs and progress. Given the follow-up `Change shot 2 to night`, it updates and regenerates only the affected shot and downstream dependencies. The project can then be exported.
+Given the prompt `Create a three-shot science-fiction short`, the system creates a main draft with a three-shot graph, invokes configured generation adapters, and displays outputs and progress. Given the follow-up `Change shot 2 to night`, it copies the main draft into a night variation, updates and regenerates only the affected shot and downstream dependencies in that variation, and leaves the main draft unchanged. The selected draft can then be exported.
 
 ## Environment
 
@@ -49,7 +49,6 @@ Before implementing the preview UI, capture the authenticated LibTV canvas at de
 
 ## Open decisions
 
-- Persistence implementation.
 - Export container and encoding behavior.
 - Final product name and visual identity.
 
