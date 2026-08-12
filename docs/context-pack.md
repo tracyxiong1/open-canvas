@@ -49,8 +49,13 @@ Before implementing the preview UI, capture the authenticated LibTV canvas at de
 
 ## Open decisions
 
-- Initial provider adapters and their exact APIs.
 - Persistence implementation.
 - Export container and encoding behavior.
 - Final product name and visual identity.
 
+## Provider decision
+
+The MVP provider boundary, routing precedence, local BYOK rules, deterministic
+mock, and evidence-backed initial adapters are specified in
+`docs/provider-contract.md`. Executable adapters remain pending until the shared
+package foundation exists.
