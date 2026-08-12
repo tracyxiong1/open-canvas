@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
 import { App } from "../src/App.jsx";
 
@@ -75,6 +75,35 @@ describe("canvas preview", () => {
     expect(screen.getByLabelText("节点连线")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "显示连线" }));
     expect(screen.queryByLabelText("节点连线")).not.toBeInTheDocument();
+  });
+
+  it("keeps fixed controls out of pointer capture while the pan tool is active", async () => {
+    const user = userEvent.setup();
+    const setPointerCapture = vi.spyOn(HTMLElement.prototype, "setPointerCapture");
+    render(<App />);
+
+    const viewport = screen.getByTestId("canvas-viewport");
+    const panButton = screen.getByRole("button", { name: "平移画布" });
+    const selectButton = screen.getByRole("button", { name: "选择节点" });
+
+    await user.click(panButton);
+    expect(panButton).toHaveAttribute("aria-pressed", "true");
+    setPointerCapture.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "显示连线" }));
+    expect(screen.queryByLabelText("节点连线")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "适合屏幕" }));
+    const fitted = parseView(viewport);
+    await user.click(screen.getByRole("button", { name: "放大画布" }));
+    expect(parseView(viewport).scale).toBeGreaterThan(fitted.scale);
+
+    await user.click(selectButton);
+    expect(selectButton).toHaveAttribute("aria-pressed", "true");
+    expect(panButton).toHaveAttribute("aria-pressed", "false");
+    expect(setPointerCapture).not.toHaveBeenCalled();
+
+    setPointerCapture.mockRestore();
   });
 
   it("renders queued, running, and failed states from current job projections", async () => {
