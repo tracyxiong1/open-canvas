@@ -284,7 +284,7 @@ export function CanvasNode({ node, selected, onSelect, onOpenPreview }) {
 
 function CanvasDock({ tool, onToolChange, showEdges, onToggleEdges, onFit }) {
   return (
-    <div className="canvas-dock" role="toolbar" aria-label="画布工具">
+    <div className="canvas-dock" role="toolbar" aria-label="画布工具" data-canvas-control>
       <button
         className={tool === "select" ? "active" : ""}
         type="button"
@@ -325,7 +325,7 @@ function CanvasDock({ tool, onToolChange, showEdges, onToggleEdges, onFit }) {
 
 function ZoomDock({ zoom, onZoomIn, onZoomOut, onFit }) {
   return (
-    <div className="zoom-dock" aria-label="缩放控制">
+    <div className="zoom-dock" aria-label="缩放控制" data-canvas-control>
       <button type="button" onClick={onZoomOut} aria-label="缩小画布">
         <MagnifyingGlassMinus aria-hidden="true" />
       </button>
@@ -341,7 +341,7 @@ function ZoomDock({ zoom, onZoomIn, onZoomOut, onFit }) {
 
 function EdgeLegend() {
   return (
-    <div className="edge-legend" aria-label="连线图例">
+    <div className="edge-legend" aria-label="连线图例" data-canvas-control>
       <span><i className="sequence-sample" />顺序</span>
       <span><i className="dependency-sample" />依赖</span>
     </div>
@@ -448,6 +448,10 @@ export function CanvasViewport({ draft, selectedNodeId, onSelectNode, onOpenPrev
   }, [fitView, onSelectNode, zoomFromCenter]);
 
   const handlePointerDown = (event) => {
+    if (event.target instanceof Element && event.target.closest("[data-canvas-control], button, input, select, textarea, a[href], [role='button']")) {
+      return;
+    }
+
     const canPan = event.button === 1 || tool === "pan" || event.pointerType === "touch";
     if (!canPan) {
       onSelectNode(null);
