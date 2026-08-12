@@ -11,6 +11,7 @@ import {
   copyDraft,
   createProject,
   connectNodes,
+  parseCanvasDocument,
   resumeGeneration,
   startGeneration,
   updateNode,
@@ -23,6 +24,43 @@ const request = {
   inputs: [],
   requirements: { aspectRatio: "1:1" as const },
 };
+
+function reverseOrderedGenerationChain() {
+  let document = createProject({ title: "Reverse generation order" });
+  for (const [title, spec] of [
+    ["Shot", { kind: "shot", prompt: "Generate", mediaKind: "image", inputAssetIds: [] }],
+    ["Inner", { kind: "composition", mediaType: "video/mp4" }],
+    ["Outer", { kind: "composition", mediaType: "video/mp4" }],
+  ] as const) {
+    const draft = document.drafts[0];
+    document = addNode(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      title,
+      spec,
+    });
+  }
+  const [shot, inner, outer] = document.drafts[0].nodes;
+  for (const [sourceNodeId, targetNodeId] of [
+    [shot!.id, inner!.id],
+    [inner!.id, outer!.id],
+  ]) {
+    const draft = document.drafts[0];
+    document = connectNodes(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      kind: "dependency",
+      sourceNodeId,
+      targetNodeId,
+    });
+  }
+  const currentNodes = new Map(document.drafts[0].nodes.map((node) => [node.id, node]));
+  document.drafts[0].nodes = [currentNodes.get(outer!.id)!, currentNodes.get(inner!.id)!, currentNodes.get(shot!.id)!];
+  parseCanvasDocument(document);
+  return { document, shotId: shot!.id, innerId: inner!.id, outerId: outer!.id };
+}
 
 test("canonical JSON key order is locale independent", () => {
   assert.equal(canonicalJson({ "ä": 1, z: 2, A: 3 }), '{"A":3,"z":2,"ä":1}');
@@ -287,4 +325,24 @@ test("composition provider inputs follow sequence order rather than edge inserti
     draft.nodes.find((node: any) => node.id === nodeId).execution.outputAssetIds,
   );
   assert.deepEqual(started.request.inputs.map((input) => input.assetId), expectedAssetIds);
+});
+
+test("shot completion recomputes reverse-ordered dependency descendants topologically", () => {
+  const { document, shotId, innerId, outerId } = reverseOrderedGenerationChain();
+  const draft = document.drafts[0];
+  const started = startGeneration(document, {
+    draftId: draft.id,
+    nodeId: shotId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: draft.revision,
+  });
+  const completed = completeGeneration(started.document, {
+    draftId: draft.id,
+    jobId: started.request.jobId,
+    providerJobId: "mock:reverse-order",
+    artifact: { kind: "image", mediaType: "image/png", bytes: Buffer.from("topological") },
+  });
+
+  assert.deepEqual(completed.drafts[0].nodes.map((node) => node.id), [outerId, innerId, shotId]);
+  assert.deepEqual(completed.drafts[0].nodes.map((node) => node.execution.status), ["dirty", "dirty", "succeeded"]);
 });

@@ -9,6 +9,7 @@ import type {
   ShotSpec,
 } from "./canvas-document.generated.js";
 import { computeNodeFingerprint, parseCanvasDocument } from "./validation.js";
+import { invalidateDependencyClosure } from "./graph.js";
 
 export class RevisionConflictError extends Error {
   constructor(scope: "project" | "draft", expected: number, actual: number) {
@@ -180,32 +181,7 @@ export function updateNode(input: CanvasDocument, options: UpdateNodeOptions): C
   if (nextSpec !== undefined) {
     node.spec = clone(nextSpec);
     node.specRevision += 1;
-    const affected = new Set([node.id]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const edge of draft.edges) {
-        if (edge.kind === "dependency" && affected.has(edge.sourceNodeId) && !affected.has(edge.targetNodeId)) {
-          affected.add(edge.targetNodeId);
-          changed = true;
-        }
-      }
-    }
-    const recompute = draft.nodes.filter((candidate) => affected.has(candidate.id));
-    for (const candidate of recompute.filter((item) => item.spec.kind === "shot")) {
-      candidate.execution = {
-        status: "dirty",
-        inputFingerprint: computeNodeFingerprint(document, draft, candidate),
-        outputAssetIds: [],
-      };
-    }
-    for (const candidate of recompute.filter((item) => item.spec.kind === "composition")) {
-      candidate.execution = {
-        status: "dirty",
-        inputFingerprint: computeNodeFingerprint(document, draft, candidate),
-        outputAssetIds: [],
-      };
-    }
+    invalidateDependencyClosure(document, draft, [node.id], true);
   }
   return finishMutation(document, draft, now(options.now));
 }
