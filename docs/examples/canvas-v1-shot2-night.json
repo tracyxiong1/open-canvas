@@ -1,230 +1,498 @@
 {
   "schemaVersion": 1,
-  "revision": 10,
+  "revision": 11,
   "project": {
     "id": "project_019c8f55-0000-7000-8000-000000000000",
     "title": "Three-shot science-fiction short",
     "createdAt": "2026-08-12T08:00:00Z",
     "updatedAt": "2026-08-12T08:05:00Z"
   },
-  "nodes": [
+  "activeDraftId": "draft_019c8f55-0002-7000-8000-000000000002",
+  "drafts": [
     {
-      "id": "node_019c8f55-1001-7000-8000-000000000001",
-      "title": "Shot 1 — Arrival",
-      "position": { "x": 0, "y": 0 },
-      "specRevision": 1,
-      "spec": {
-        "kind": "shot",
-        "prompt": "A courier ship approaches a silent orbital city at dawn.",
-        "mediaKind": "video",
-        "inputAssetIds": [],
-        "requirements": {
-          "aspectRatio": "16:9",
-          "durationSeconds": 5,
-          "audio": "either",
-          "mediaType": "video/mp4"
+      "id": "draft_019c8f55-0001-7000-8000-000000000001",
+      "title": "Main draft",
+      "revision": 9,
+      "createdAt": "2026-08-12T08:00:00Z",
+      "updatedAt": "2026-08-12T08:04:00Z",
+      "nodes": [
+        {
+          "id": "node_019c8f55-1001-7000-8000-000000000001",
+          "title": "Shot 1 — Arrival",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "A courier ship approaches a silent orbital city at dawn.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+            "activeJobId": "job_019c8f55-3001-7000-8000-000000000001",
+            "outputAssetIds": [
+              "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
         },
-        "routing": {
-          "aiChoice": {
-            "providerId": "mock",
-            "modelId": "mock-video-v1"
+        {
+          "id": "node_019c8f55-1002-7000-8000-000000000002",
+          "title": "Shot 2 — Crossing",
+          "position": {
+            "x": 360,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "The courier walks through a bright glass transit corridor.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
+            "activeJobId": "job_019c8f55-3002-7000-8000-000000000002",
+            "outputAssetIds": [
+              "asset_sha256_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          }
+        },
+        {
+          "id": "node_019c8f55-1003-7000-8000-000000000003",
+          "title": "Shot 3 — Signal",
+          "position": {
+            "x": 720,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "A dormant beacon awakens above the city and fills the sky with light.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+            "activeJobId": "job_019c8f55-3003-7000-8000-000000000003",
+            "outputAssetIds": [
+              "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            ]
+          }
+        },
+        {
+          "id": "node_019c8f55-1004-7000-8000-000000000004",
+          "title": "Final composition",
+          "position": {
+            "x": 360,
+            "y": 320
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "mediaType": "video/mp4"
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
+            "activeJobId": "job_019c8f55-3004-7000-8000-000000000004",
+            "outputAssetIds": [
+              "asset_sha256_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            ]
           }
         }
-      },
-      "execution": {
-        "status": "succeeded",
-        "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
-        "activeJobId": "job_019c8f55-3001-7000-8000-000000000001",
-        "outputAssetIds": [
-          "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        ]
-      }
+      ],
+      "edges": [
+        {
+          "id": "edge_019c8f55-2001-7000-8000-000000000001",
+          "kind": "sequence",
+          "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-1002-7000-8000-000000000002"
+        },
+        {
+          "id": "edge_019c8f55-2002-7000-8000-000000000002",
+          "kind": "sequence",
+          "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "targetNodeId": "node_019c8f55-1003-7000-8000-000000000003"
+        },
+        {
+          "id": "edge_019c8f55-2003-7000-8000-000000000003",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
+        },
+        {
+          "id": "edge_019c8f55-2004-7000-8000-000000000004",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
+        },
+        {
+          "id": "edge_019c8f55-2005-7000-8000-000000000005",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1003-7000-8000-000000000003",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
+        }
+      ],
+      "jobs": [
+        {
+          "id": "job_019c8f55-3001-7000-8000-000000000001",
+          "nodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "attempt": 1,
+          "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "createdAt": "2026-08-12T08:01:00Z",
+          "updatedAt": "2026-08-12T08:01:02Z"
+        },
+        {
+          "id": "job_019c8f55-3002-7000-8000-000000000002",
+          "nodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "attempt": 1,
+          "inputFingerprint": "sha256:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "createdAt": "2026-08-12T08:01:10Z",
+          "updatedAt": "2026-08-12T08:01:12Z"
+        },
+        {
+          "id": "job_019c8f55-3003-7000-8000-000000000003",
+          "nodeId": "node_019c8f55-1003-7000-8000-000000000003",
+          "attempt": 1,
+          "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          ],
+          "createdAt": "2026-08-12T08:01:20Z",
+          "updatedAt": "2026-08-12T08:01:22Z"
+        },
+        {
+          "id": "job_019c8f55-3004-7000-8000-000000000004",
+          "nodeId": "node_019c8f55-1004-7000-8000-000000000004",
+          "attempt": 1,
+          "inputFingerprint": "sha256:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
+          "status": "succeeded",
+          "route": {
+            "providerId": "local",
+            "modelId": "ffmpeg-v1",
+            "selectionSource": "registry_default"
+          },
+          "providerJobId": "local:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ],
+          "createdAt": "2026-08-12T08:03:00Z",
+          "updatedAt": "2026-08-12T08:04:00Z"
+        }
+      ]
     },
     {
-      "id": "node_019c8f55-1002-7000-8000-000000000002",
-      "title": "Shot 2 — Crossing",
-      "position": { "x": 360, "y": 0 },
-      "specRevision": 2,
-      "spec": {
-        "kind": "shot",
-        "prompt": "At night, the courier walks through a moonlit glass transit corridor.",
-        "mediaKind": "video",
-        "inputAssetIds": [],
-        "requirements": {
-          "aspectRatio": "16:9",
-          "durationSeconds": 5,
-          "audio": "either",
-          "mediaType": "video/mp4"
+      "id": "draft_019c8f55-0002-7000-8000-000000000002",
+      "title": "Night variation",
+      "revision": 1,
+      "sourceDraftId": "draft_019c8f55-0001-7000-8000-000000000001",
+      "createdAt": "2026-08-12T08:05:00Z",
+      "updatedAt": "2026-08-12T08:05:00Z",
+      "nodes": [
+        {
+          "id": "node_019c8f55-1001-7000-8000-000000000001",
+          "title": "Shot 1 — Arrival",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "A courier ship approaches a silent orbital city at dawn.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+            "activeJobId": "job_019c8f55-3001-7000-8000-000000000001",
+            "outputAssetIds": [
+              "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
         },
-        "routing": {
-          "aiChoice": {
-            "providerId": "mock",
-            "modelId": "mock-video-v1"
+        {
+          "id": "node_019c8f55-1002-7000-8000-000000000002",
+          "title": "Shot 2 — Crossing",
+          "position": {
+            "x": 360,
+            "y": 0
+          },
+          "specRevision": 2,
+          "spec": {
+            "kind": "shot",
+            "prompt": "At night, the courier walks through a moonlit glass transit corridor.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:08229bd6d6f4589a96022ad19b1cd23872bd2f4572353210582404fceaa8360a",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-1003-7000-8000-000000000003",
+          "title": "Shot 3 — Signal",
+          "position": {
+            "x": 720,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "A dormant beacon awakens above the city and fills the sky with light.",
+            "mediaKind": "video",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "durationSeconds": 5,
+              "audio": "either",
+              "mediaType": "video/mp4"
+            },
+            "routing": {
+              "aiChoice": {
+                "providerId": "mock",
+                "modelId": "mock-video-v1"
+              }
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+            "activeJobId": "job_019c8f55-3003-7000-8000-000000000003",
+            "outputAssetIds": [
+              "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            ]
+          }
+        },
+        {
+          "id": "node_019c8f55-1004-7000-8000-000000000004",
+          "title": "Final composition",
+          "position": {
+            "x": 360,
+            "y": 320
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "mediaType": "video/mp4"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:ea6959059d670824fa7c6fd5af4b57c154d7d5920cbf8ce25997bcc96eb03028",
+            "outputAssetIds": []
           }
         }
-      },
-      "execution": {
-        "status": "dirty",
-        "inputFingerprint": "sha256:08229bd6d6f4589a96022ad19b1cd23872bd2f4572353210582404fceaa8360a",
-        "outputAssetIds": []
-      }
-    },
-    {
-      "id": "node_019c8f55-1003-7000-8000-000000000003",
-      "title": "Shot 3 — Signal",
-      "position": { "x": 720, "y": 0 },
-      "specRevision": 1,
-      "spec": {
-        "kind": "shot",
-        "prompt": "A dormant beacon awakens above the city and fills the sky with light.",
-        "mediaKind": "video",
-        "inputAssetIds": [],
-        "requirements": {
-          "aspectRatio": "16:9",
-          "durationSeconds": 5,
-          "audio": "either",
-          "mediaType": "video/mp4"
+      ],
+      "edges": [
+        {
+          "id": "edge_019c8f55-2001-7000-8000-000000000001",
+          "kind": "sequence",
+          "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-1002-7000-8000-000000000002"
         },
-        "routing": {
-          "aiChoice": {
-            "providerId": "mock",
-            "modelId": "mock-video-v1"
-          }
+        {
+          "id": "edge_019c8f55-2002-7000-8000-000000000002",
+          "kind": "sequence",
+          "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "targetNodeId": "node_019c8f55-1003-7000-8000-000000000003"
+        },
+        {
+          "id": "edge_019c8f55-2003-7000-8000-000000000003",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
+        },
+        {
+          "id": "edge_019c8f55-2004-7000-8000-000000000004",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
+        },
+        {
+          "id": "edge_019c8f55-2005-7000-8000-000000000005",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-1003-7000-8000-000000000003",
+          "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
         }
-      },
-      "execution": {
-        "status": "succeeded",
-        "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
-        "activeJobId": "job_019c8f55-3003-7000-8000-000000000003",
-        "outputAssetIds": [
-          "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-        ]
-      }
-    },
-    {
-      "id": "node_019c8f55-1004-7000-8000-000000000004",
-      "title": "Final composition",
-      "position": { "x": 360, "y": 320 },
-      "specRevision": 1,
-      "spec": {
-        "kind": "composition",
-        "mediaType": "video/mp4"
-      },
-      "execution": {
-        "status": "dirty",
-        "inputFingerprint": "sha256:ea6959059d670824fa7c6fd5af4b57c154d7d5920cbf8ce25997bcc96eb03028",
-        "outputAssetIds": []
-      }
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge_019c8f55-2001-7000-8000-000000000001",
-      "kind": "sequence",
-      "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
-      "targetNodeId": "node_019c8f55-1002-7000-8000-000000000002"
-    },
-    {
-      "id": "edge_019c8f55-2002-7000-8000-000000000002",
-      "kind": "sequence",
-      "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
-      "targetNodeId": "node_019c8f55-1003-7000-8000-000000000003"
-    },
-    {
-      "id": "edge_019c8f55-2003-7000-8000-000000000003",
-      "kind": "dependency",
-      "sourceNodeId": "node_019c8f55-1001-7000-8000-000000000001",
-      "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
-    },
-    {
-      "id": "edge_019c8f55-2004-7000-8000-000000000004",
-      "kind": "dependency",
-      "sourceNodeId": "node_019c8f55-1002-7000-8000-000000000002",
-      "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
-    },
-    {
-      "id": "edge_019c8f55-2005-7000-8000-000000000005",
-      "kind": "dependency",
-      "sourceNodeId": "node_019c8f55-1003-7000-8000-000000000003",
-      "targetNodeId": "node_019c8f55-1004-7000-8000-000000000004"
-    }
-  ],
-  "jobs": [
-    {
-      "id": "job_019c8f55-3001-7000-8000-000000000001",
-      "nodeId": "node_019c8f55-1001-7000-8000-000000000001",
-      "attempt": 1,
-      "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
-      "status": "succeeded",
-      "route": {
-        "providerId": "mock",
-        "modelId": "mock-video-v1",
-        "selectionSource": "ai_choice"
-      },
-      "providerJobId": "mock:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
-      "progress": 1,
-      "outputAssetIds": [
-        "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       ],
-      "createdAt": "2026-08-12T08:01:00Z",
-      "updatedAt": "2026-08-12T08:01:02Z"
-    },
-    {
-      "id": "job_019c8f55-3002-7000-8000-000000000002",
-      "nodeId": "node_019c8f55-1002-7000-8000-000000000002",
-      "attempt": 1,
-      "inputFingerprint": "sha256:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
-      "status": "succeeded",
-      "route": {
-        "providerId": "mock",
-        "modelId": "mock-video-v1",
-        "selectionSource": "ai_choice"
-      },
-      "providerJobId": "mock:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
-      "progress": 1,
-      "outputAssetIds": [
-        "asset_sha256_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      ],
-      "createdAt": "2026-08-12T08:01:10Z",
-      "updatedAt": "2026-08-12T08:01:12Z"
-    },
-    {
-      "id": "job_019c8f55-3003-7000-8000-000000000003",
-      "nodeId": "node_019c8f55-1003-7000-8000-000000000003",
-      "attempt": 1,
-      "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
-      "status": "succeeded",
-      "route": {
-        "providerId": "mock",
-        "modelId": "mock-video-v1",
-        "selectionSource": "ai_choice"
-      },
-      "providerJobId": "mock:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
-      "progress": 1,
-      "outputAssetIds": [
-        "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-      ],
-      "createdAt": "2026-08-12T08:01:20Z",
-      "updatedAt": "2026-08-12T08:01:22Z"
-    },
-    {
-      "id": "job_019c8f55-3004-7000-8000-000000000004",
-      "nodeId": "node_019c8f55-1004-7000-8000-000000000004",
-      "attempt": 1,
-      "inputFingerprint": "sha256:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
-      "status": "succeeded",
-      "route": {
-        "providerId": "local",
-        "modelId": "ffmpeg-v1",
-        "selectionSource": "registry_default"
-      },
-      "providerJobId": "local:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
-      "progress": 1,
-      "outputAssetIds": [
-        "asset_sha256_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-      ],
-      "createdAt": "2026-08-12T08:03:00Z",
-      "updatedAt": "2026-08-12T08:04:00Z"
+      "jobs": [
+        {
+          "id": "job_019c8f55-3001-7000-8000-000000000001",
+          "nodeId": "node_019c8f55-1001-7000-8000-000000000001",
+          "attempt": 1,
+          "inputFingerprint": "sha256:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:303ee2e044f13d7042dffe4507895ae1f01b0955262430d3d6586adb13ea37d2",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          ],
+          "createdAt": "2026-08-12T08:01:00Z",
+          "updatedAt": "2026-08-12T08:01:02Z"
+        },
+        {
+          "id": "job_019c8f55-3002-7000-8000-000000000002",
+          "nodeId": "node_019c8f55-1002-7000-8000-000000000002",
+          "attempt": 1,
+          "inputFingerprint": "sha256:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:aa5c8dd790a736eaeb8316bcd373f1b91e40f62467fc5693975ee25f3da2e346",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          ],
+          "createdAt": "2026-08-12T08:01:10Z",
+          "updatedAt": "2026-08-12T08:01:12Z"
+        },
+        {
+          "id": "job_019c8f55-3003-7000-8000-000000000003",
+          "nodeId": "node_019c8f55-1003-7000-8000-000000000003",
+          "attempt": 1,
+          "inputFingerprint": "sha256:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-video-v1",
+            "selectionSource": "ai_choice"
+          },
+          "providerJobId": "mock:6a36f7ddabe76326ec431a669a3d6615fe9d5d2003322274af5ac784174dc74b",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          ],
+          "createdAt": "2026-08-12T08:01:20Z",
+          "updatedAt": "2026-08-12T08:01:22Z"
+        },
+        {
+          "id": "job_019c8f55-3004-7000-8000-000000000004",
+          "nodeId": "node_019c8f55-1004-7000-8000-000000000004",
+          "attempt": 1,
+          "inputFingerprint": "sha256:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
+          "status": "succeeded",
+          "route": {
+            "providerId": "local",
+            "modelId": "ffmpeg-v1",
+            "selectionSource": "registry_default"
+          },
+          "providerJobId": "local:0a160ddb362ca0782f3c559c161225b217d854e9eb7d7447f415fa3f9f4befce",
+          "progress": 1,
+          "outputAssetIds": [
+            "asset_sha256_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          ],
+          "createdAt": "2026-08-12T08:03:00Z",
+          "updatedAt": "2026-08-12T08:04:00Z"
+        }
+      ]
     }
   ],
   "assets": [
@@ -237,6 +505,7 @@
       "path": "assets/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "origin": {
         "kind": "job",
+        "draftId": "draft_019c8f55-0001-7000-8000-000000000001",
         "jobId": "job_019c8f55-3001-7000-8000-000000000001"
       },
       "createdAt": "2026-08-12T08:01:02Z"
@@ -250,6 +519,7 @@
       "path": "assets/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "origin": {
         "kind": "job",
+        "draftId": "draft_019c8f55-0001-7000-8000-000000000001",
         "jobId": "job_019c8f55-3002-7000-8000-000000000002"
       },
       "createdAt": "2026-08-12T08:01:12Z"
@@ -263,6 +533,7 @@
       "path": "assets/sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "origin": {
         "kind": "job",
+        "draftId": "draft_019c8f55-0001-7000-8000-000000000001",
         "jobId": "job_019c8f55-3003-7000-8000-000000000003"
       },
       "createdAt": "2026-08-12T08:01:22Z"
@@ -276,6 +547,7 @@
       "path": "assets/sha256/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "origin": {
         "kind": "job",
+        "draftId": "draft_019c8f55-0001-7000-8000-000000000001",
         "jobId": "job_019c8f55-3004-7000-8000-000000000004"
       },
       "createdAt": "2026-08-12T08:04:00Z"
