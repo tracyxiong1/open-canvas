@@ -36,12 +36,15 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 
 Given the prompt `Create a three-shot science-fiction short`, the system creates a main draft with a three-shot graph, invokes configured generation adapters, and displays outputs and progress. Given the follow-up `Change shot 2 to night`, it copies the main draft into a night variation, updates and regenerates only the affected shot and downstream dependencies in that variation, and leaves the main draft unchanged. The selected draft can then be exported.
 
-## Environment
+## Environment and parallel delivery
 
-- Execution host: `devbox-32c`.
-- Remote workspace: `/home/xiongle/workspace`.
-- Node.js 22, npm 10, Git 2.39, Codex 0.147, Multica 0.4.22.
-- Multica Agent tasks must bind to the remote Codex runtime named `Codex (devbox-32c)`.
+- Two Multica Codex runtimes are used: the current Mac and `devbox-32c`.
+- The Mac working copy is `/Users/xiongle/Documents/Codex/2026-08-07/you/work/creator-canvas`.
+- The Devbox working copy is `/home/xiongle/workspace/creator-canvas`.
+- Both copies exchange topic branches through the bare Git remote on Devbox; agents must not share or rewrite another task's branch.
+- Devbox owns the shared core, persistence, provider jobs, and CLI work.
+- The Mac owns preview UI and Codex Skill work. The Skill starts only after the CLI contract is available.
+- Each task must commit and push its topic branch, then report the branch and commit in Multica. Integration is a separate lead-owned step.
 
 ## Visual evidence gate
 
