@@ -11,10 +11,10 @@ import type {
 import type { GenerationRequest, ProviderSnapshot } from "./providers.js";
 import { RevisionConflictError } from "./mutations.js";
 import {
-  computeNodeFingerprint,
   orderedCompositionDependencies,
   parseCanvasDocument,
 } from "./validation.js";
+import { invalidateDependencyClosure } from "./graph.js";
 
 function timestamp(value?: string): string {
   return value ?? new Date().toISOString();
@@ -323,26 +323,7 @@ export function completeGeneration(input: CanvasDocument, options: CompleteGener
   if (node.execution.activeJobId === job.id && node.execution.inputFingerprint === job.inputFingerprint) {
     node.execution.status = "succeeded";
     node.execution.outputAssetIds = [assetId];
-    const affected = new Set([node.id]);
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const edge of draft.edges) {
-        if (edge.kind === "dependency" && affected.has(edge.sourceNodeId) && !affected.has(edge.targetNodeId)) {
-          affected.add(edge.targetNodeId);
-          changed = true;
-        }
-      }
-    }
-    for (const descendant of draft.nodes.filter(
-      (candidate) => candidate.id !== node.id && affected.has(candidate.id),
-    )) {
-      descendant.execution = {
-        status: "dirty",
-        inputFingerprint: computeNodeFingerprint(document, draft, descendant),
-        outputAssetIds: [],
-      };
-    }
+    invalidateDependencyClosure(document, draft, [node.id], false);
   }
   return finish(document, draft, now);
 }

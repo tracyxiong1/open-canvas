@@ -8,6 +8,7 @@ import {
   connectNodes,
   copyDraft,
   createProject,
+  parseCanvasDocument,
   updateNode,
 } from "../src/index.js";
 
@@ -18,6 +19,43 @@ async function example() {
       "utf8",
     ),
   );
+}
+
+function reverseOrderedDependencyChain() {
+  let document = createProject({ title: "Reverse dependency order" });
+  for (const [title, spec] of [
+    ["Shot", { kind: "shot", prompt: "Day", mediaKind: "image", inputAssetIds: [] }],
+    ["Inner", { kind: "composition", mediaType: "video/mp4" }],
+    ["Outer", { kind: "composition", mediaType: "video/mp4" }],
+  ] as const) {
+    const draft = document.drafts[0];
+    document = addNode(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      title,
+      spec,
+    });
+  }
+  const [shot, inner, outer] = document.drafts[0].nodes;
+  for (const [sourceNodeId, targetNodeId] of [
+    [shot!.id, inner!.id],
+    [inner!.id, outer!.id],
+  ]) {
+    const draft = document.drafts[0];
+    document = connectNodes(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      kind: "dependency",
+      sourceNodeId,
+      targetNodeId,
+    });
+  }
+  const currentNodes = new Map(document.drafts[0].nodes.map((node) => [node.id, node]));
+  document.drafts[0].nodes = [currentNodes.get(outer!.id)!, currentNodes.get(inner!.id)!, currentNodes.get(shot!.id)!];
+  parseCanvasDocument(document);
+  return { document, shotId: shot!.id, innerId: inner!.id, outerId: outer!.id };
 }
 
 test("presentation edits preserve fingerprints and execution state", async () => {
@@ -137,4 +175,19 @@ test("prompt updates reject composition nodes instead of committing a no-op", as
       }),
     /shot nodes/,
   );
+});
+
+test("shot updates recompute reverse-ordered dependency descendants topologically", () => {
+  const { document, shotId, innerId, outerId } = reverseOrderedDependencyChain();
+  const draft = document.drafts[0];
+  const updated = updateNode(document, {
+    draftId: draft.id,
+    nodeId: shotId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: draft.revision,
+    prompt: "Night",
+  });
+
+  assert.deepEqual(updated.drafts[0].nodes.map((node) => node.id), [outerId, innerId, shotId]);
+  assert.deepEqual(updated.drafts[0].nodes.map((node) => node.execution.status), ["dirty", "dirty", "dirty"]);
 });
