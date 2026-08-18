@@ -2,7 +2,7 @@
 
 **Findings**
 
-- 未发现仍需处理的 P0、P1 或 P2 差异。实现保留了参考证据中的固定控制层、点阵画布、同坐标系节点/参数/连线、选中端口、移动端横向画布语义和素材直观预览，同时使用 Creator Canvas 自有领域结构、文案、图标和原创素材。
+- 未发现仍需处理的 P0、P1 或 P2 差异。实现保留了参考证据中的固定控制层、点阵画布、同坐标系节点/参数/连线、选中端口、移动端横向画布语义和素材直观预览，同时使用 Open Canvas 自有领域结构、文案、图标和原创素材。
 
 **Comparison Artifacts**
 
@@ -42,7 +42,7 @@
 
 **Open Questions**
 
-- The approved reference has no Creator Canvas composition equivalent and no retainable queued/failed visual captures. Composition layout and all five generation-state semantics therefore follow `docs/schema/canvas-document-v1.schema.json` and the canonical examples, as required.
+- The approved reference has no Open Canvas composition equivalent and no retainable queued/failed visual captures. Composition layout and all five generation-state semantics therefore follow `docs/schema/canvas-document-v1.schema.json` and the canonical examples, as required.
 
 **Implementation Checklist**
 

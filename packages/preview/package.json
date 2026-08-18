@@ -1,21 +1,21 @@
 {
-  "name": "@creator-canvas/preview",
+  "name": "@open-canvas/preview",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "npm run build --workspace @creator-canvas/core",
+    "predev": "npm run build --workspace @open-canvas/core",
     "dev": "vite",
-    "prebuild": "npm run build --workspace @creator-canvas/core",
+    "prebuild": "npm run build --workspace @open-canvas/core",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
-    "pretest": "npm run build --workspace @creator-canvas/core",
+    "pretest": "npm run build --workspace @open-canvas/core",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:sites": "npm run build && node --test tests/sites-worker.test.mjs"
   },
   "dependencies": {
-    "@creator-canvas/core": "0.1.0",
+    "@open-canvas/core": "0.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "5.0.4",
     "@xyflow/react": "^12.11.2",

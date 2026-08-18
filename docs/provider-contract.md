@@ -2,7 +2,7 @@
 
 Status: MVP specification for JIM-10.
 
-This document defines the boundary between Creator Canvas core and generation
+This document defines the boundary between Open Canvas core and generation
 providers. It is intentionally independent of any provider SDK. The canvas
 document remains the source of truth for requested work, resolved routes, job
 state, and durable asset references; adapters only translate between this

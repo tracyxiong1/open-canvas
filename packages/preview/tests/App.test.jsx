@@ -7,11 +7,11 @@ import {
   createProject,
   failGeneration,
   startGeneration,
-} from "@creator-canvas/core";
+} from "@open-canvas/core";
 import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
 import { App } from "../src/App.jsx";
 
-describe("editable creator canvas", () => {
+describe("editable open canvas", () => {
   it("renders the active variation as a React Flow editor", async () => {
     render(<App />);
 

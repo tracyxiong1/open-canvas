@@ -4,7 +4,7 @@ import { access, link, mkdir, open, readFile, rename, unlink } from "node:fs/pro
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-import type { CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument } from "./canvas-document.generated.js";
+import type { OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument } from "./canvas-document.generated.js";
 import { parseCanvasDocument } from "./validation.js";
 
 export interface SaveHooks {
@@ -24,7 +24,7 @@ export async function saveProjectAtomic(
   hooks: SaveHooks = {},
 ): Promise<void> {
   const document = parseCanvasDocument(input);
-  const stateDirectory = join(projectDirectory, ".creator-canvas");
+  const stateDirectory = join(projectDirectory, ".open-canvas");
   const tempDirectory = join(stateDirectory, "tmp");
   const lockPath = join(stateDirectory, "lock");
   await mkdir(tempDirectory, { recursive: true });
@@ -91,7 +91,7 @@ export async function writeAssetBytes(
   }
   const directory = join(projectDirectory, "assets", "sha256");
   const path = join(directory, digest);
-  const tempDirectory = join(projectDirectory, ".creator-canvas", "tmp");
+  const tempDirectory = join(projectDirectory, ".open-canvas", "tmp");
   const tempPath = join(tempDirectory, `asset-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
   await mkdir(tempDirectory, { recursive: true });

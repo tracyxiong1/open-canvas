@@ -110,9 +110,9 @@ test("mock video artifact is a self-contained MP4 with media metadata", async ()
 });
 
 test("project creation never reads environment credentials", () => {
-  process.env.CREATOR_CANVAS_TEST_SECRET = "do-not-persist";
+  process.env.OPEN_CANVAS_TEST_SECRET = "do-not-persist";
   const project = createProject({ title: "Safe" });
-  assert.equal(JSON.stringify(project).includes(process.env.CREATOR_CANVAS_TEST_SECRET), false);
+  assert.equal(JSON.stringify(project).includes(process.env.OPEN_CANVAS_TEST_SECRET), false);
 });
 
 test("a stale completion updates history without attaching to an invalidated or copied node", () => {

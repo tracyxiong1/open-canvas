@@ -1,4 +1,4 @@
-# Creator Canvas architecture and draft-based project document v1
+# Open Canvas architecture and draft-based project document v1
 
 Status: implemented MVP architecture baseline.
 
@@ -42,7 +42,7 @@ skills/
   create-video/         # Codex instructions that invoke the CLI
 ```
 
-`@creator-canvas/core` is the only shared TypeScript dependency. Splitting
+`@open-canvas/core` is the only shared TypeScript dependency. Splitting
 schema, graph, persistence, providers, and jobs into separate packages would
 add release and dependency overhead without creating an MVP deployment
 boundary. A single application package would instead tempt the CLI and studio
@@ -265,8 +265,8 @@ The project directory is the persistence boundary:
 <project>/
   project.json                        # project, drafts, graphs, jobs, asset metadata
   assets/sha256/<digest>              # immutable project-shared bytes
-  .creator-canvas/lock                # transient single-writer lock
-  .creator-canvas/tmp/                # transient same-filesystem writes/downloads
+  .open-canvas/lock                # transient single-writer lock
+  .open-canvas/tmp/                # transient same-filesystem writes/downloads
 ```
 
 `project.json` stores only project-relative asset paths using `/` separators.
@@ -276,7 +276,7 @@ bytes are copied or streamed into `assets/` before the document references
 them. The CLI verifies byte length and checksum on read/export.
 
 Writes use a project-local lock plus project and selected-draft revision checks.
-The CLI writes and fsyncs a temporary file in `.creator-canvas/tmp/`, validates
+The CLI writes and fsyncs a temporary file in `.open-canvas/tmp/`, validates
 it, then renames it over `project.json` on the same filesystem. A lock file and
 temporary files are operational state, never document truth. The browser
 studio imports a selected JSON document, rejects invalid input before replacing

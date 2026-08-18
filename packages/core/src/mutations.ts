@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import { canonicalSha256 } from "./canonical.js";
 import type {
   CompositionSpec,
-  CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
+  OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Node,
   ShotSpec,

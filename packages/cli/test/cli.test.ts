@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { test } from "node:test";
 
-import { loadProject, saveProjectAtomic, startGeneration } from "@creator-canvas/core";
+import { loadProject, saveProjectAtomic, startGeneration } from "@open-canvas/core";
 
 const workspace = resolve(import.meta.dirname, "../../..");
 const main = resolve(workspace, "packages/cli/src/main.ts");
@@ -31,7 +31,7 @@ async function cli(args: string[]): Promise<any> {
 }
 
 test("CLI creates, connects, generates, inspects, previews, and exports from project.json", async () => {
-  const root = await mkdtemp(join(tmpdir(), "creator-canvas-cli-"));
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-"));
   const projectDir = join(root, "demo");
   const initialized = await cli(["init", projectDir, "--title", "Science fiction short"]);
   assert.equal(initialized.revision, 0);
@@ -95,7 +95,7 @@ test("CLI creates, connects, generates, inspects, previews, and exports from pro
 });
 
 test("CLI copies a draft and applies a revision-checked targeted update", async () => {
-  const root = await mkdtemp(join(tmpdir(), "creator-canvas-cli-copy-"));
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-copy-"));
   const projectDir = join(root, "demo");
   const initialized = await cli(["init", projectDir, "--title", "Variations"]);
   const shot = await cli([
@@ -126,7 +126,7 @@ test("CLI copies a draft and applies a revision-checked targeted update", async 
 });
 
 test("invalid mock routing fails before a job is persisted", async () => {
-  const root = await mkdtemp(join(tmpdir(), "creator-canvas-cli-route-"));
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-route-"));
   const projectDir = join(root, "demo");
   await cli(["init", projectDir, "--title", "Invalid route"]);
   const shot = await cli([
@@ -142,7 +142,7 @@ test("invalid mock routing fails before a job is persisted", async () => {
 });
 
 test("generate resumes a queued job persisted by an interrupted process", async () => {
-  const root = await mkdtemp(join(tmpdir(), "creator-canvas-cli-resume-"));
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-resume-"));
   const projectDir = join(root, "demo");
   await cli(["init", projectDir, "--title", "Resume"]);
   const shot = await cli([

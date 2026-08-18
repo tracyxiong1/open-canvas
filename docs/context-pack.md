@@ -1,4 +1,4 @@
-# Creator Canvas MVP Context Pack
+# Open Canvas MVP Context Pack
 
 ## Task summary
 
@@ -39,7 +39,7 @@ Given the prompt `Create a three-shot science-fiction short`, the system creates
 ## Development and delivery
 
 - Codex operates the project directly from the local workspace; the Devbox remains an optional remote development environment.
-- GitHub repository: `tracyxiong1/creator-canvas` (private).
+- GitHub repository: `tracyxiong1/open-canvas` (private).
 - `main` is the integrated baseline. Feature work is delivered through focused branches and Draft PRs.
 - The shared command core is the only mutation implementation used by the CLI and browser studio.
 - The Codex creation skill is the next consumer now that the CLI contract is available.

@@ -1,5 +1,5 @@
 {
-  "name": "creator-canvas",
+  "name": "open-canvas",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -9,8 +9,8 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run build --workspace @creator-canvas/core && npm run check --workspaces --if-present",
-    "dev": "npm run dev --workspace @creator-canvas/preview",
+    "check": "npm run build --workspace @open-canvas/core && npm run check --workspaces --if-present",
+    "dev": "npm run dev --workspace @open-canvas/preview",
     "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {

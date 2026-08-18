@@ -1,5 +1,5 @@
 import type {
-  CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
+  OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Node,
 } from "./canvas-document.generated.js";
