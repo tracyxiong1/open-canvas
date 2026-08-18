@@ -1,6 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  addNode,
+  connectNodes,
+  disconnectEdge,
+  parseCanvasDocument,
+  updateNode,
+} from "@creator-canvas/core/browser";
+import {
+  ArrowClockwise,
+  ArrowCounterClockwise,
   CheckCircle,
+  DownloadSimple,
   FileArrowUp,
   FilmSlate,
   GitBranch,
@@ -14,6 +24,8 @@ import { CanvasViewport } from "./CanvasViewport.jsx";
 import { resolveDemoAssetUrl } from "./demo-assets.js";
 import { chooseInitialNode, createPreviewModel, truncateIdentifier } from "./project-document.js";
 
+const HISTORY_LIMIT = 50;
+
 function buildModel(document, draftId) {
   return createPreviewModel(document, {
     draftId,
@@ -21,7 +33,32 @@ function buildModel(document, draftId) {
   });
 }
 
-function ProjectHeader({ model, onDraftChange, onProjectFile }) {
+function findCanonicalDraft(document, draftId) {
+  const draft = document.drafts.find((item) => item.id === draftId);
+  if (!draft) throw new Error(`Draft not found: ${draftId}`);
+  return draft;
+}
+
+function projectFileName(title) {
+  const safeTitle = title.trim().replace(/[^\p{Letter}\p{Number}._-]+/gu, "-").replace(/^-+|-+$/g, "");
+  return `${safeTitle || "creator-canvas"}.json`;
+}
+
+function serializeProject(document) {
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+function ProjectHeader({
+  model,
+  isDirty,
+  canUndo,
+  canRedo,
+  onDraftChange,
+  onProjectFile,
+  onDownload,
+  onUndo,
+  onRedo,
+}) {
   const inputRef = useRef(null);
   const draft = model.activeDraft;
   const complete = draft.statusCounts.succeeded ?? 0;
@@ -31,11 +68,9 @@ function ProjectHeader({ model, onDraftChange, onProjectFile }) {
   return (
     <header className="topbar">
       <div className="project-identity">
-        <div className="project-mark" aria-hidden="true">
-          <FilmSlate weight="fill" />
-        </div>
+        <div className="project-mark" aria-hidden="true"><FilmSlate weight="fill" /></div>
         <div className="project-copy">
-          <span className="project-kicker">项目预览</span>
+          <span className="project-kicker">创作画布</span>
           <strong title={model.project.title}>{model.project.title}</strong>
         </div>
       </div>
@@ -43,47 +78,31 @@ function ProjectHeader({ model, onDraftChange, onProjectFile }) {
       <div className="draft-control">
         <GitBranch aria-hidden="true" />
         <label htmlFor="draft-select">草稿</label>
-        <select
-          id="draft-select"
-          value={draft.id}
-          onChange={(event) => onDraftChange(event.target.value)}
-        >
-          {model.drafts.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.title}
-            </option>
-          ))}
+        <select id="draft-select" value={draft.id} aria-label="草稿" onChange={(event) => onDraftChange(event.target.value)}>
+          {model.drafts.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
-        {draft.sourceDraftId ? (
-          <span className="variation-chip" title={`源草稿 ${draft.sourceDraftId}`}>
-            变体
-          </span>
-        ) : null}
+        {draft.sourceDraftId ? <span className="variation-chip" title={`源草稿 ${draft.sourceDraftId}`}>变体</span> : null}
       </div>
 
       <div className="header-actions">
-        <div className="status-summary" aria-label="草稿生成状态汇总">
-          <span className="summary-item success">
-            <CheckCircle weight="fill" aria-hidden="true" />
-            {complete} 完成
-          </span>
+        <div className="status-summary" role="status" aria-label="草稿生成状态汇总">
+          <span className="summary-item success"><CheckCircle weight="fill" aria-hidden="true" />{complete} 完成</span>
           {active ? <span className="summary-item active">{active} 进行中</span> : null}
           {pending ? <span className="summary-item pending">{pending} 待处理</span> : null}
         </div>
-        <button className="secondary-button" type="button" onClick={() => inputRef.current?.click()}>
-          <FileArrowUp aria-hidden="true" />
-          <span>打开项目</span>
+        <div className="history-controls" role="group" aria-label="编辑历史">
+          <button type="button" onClick={onUndo} disabled={!canUndo} aria-label="撤销" title="撤销 (⌘Z)"><ArrowCounterClockwise aria-hidden="true" /></button>
+          <button type="button" onClick={onRedo} disabled={!canRedo} aria-label="重做" title="重做 (⇧⌘Z)"><ArrowClockwise aria-hidden="true" /></button>
+        </div>
+        <button className="secondary-button" type="button" aria-label="打开" onClick={() => inputRef.current?.click()}>
+          <FileArrowUp aria-hidden="true" /><span>打开</span>
         </button>
-        <input
-          ref={inputRef}
-          className="visually-hidden"
-          type="file"
-          accept="application/json,.json"
-          onChange={onProjectFile}
-          aria-label="打开项目 JSON 文档"
-        />
-        <span className="readonly-badge" title={`Project revision ${model.revision}`}>
-          Schema v{model.schemaVersion} · 只读
+        <input ref={inputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={onProjectFile} aria-label="打开项目 JSON 文档" />
+        <button className="secondary-button primary-action" type="button" aria-label="导出 JSON" onClick={onDownload}>
+          <DownloadSimple aria-hidden="true" /><span>导出 JSON</span>
+        </button>
+        <span className={`editor-badge ${isDirty ? "dirty" : ""}`} title={`Project revision ${model.revision}`}>
+          {isDirty ? "有本地更改" : `Schema v${model.schemaVersion} · 可编辑`}
         </span>
       </div>
     </header>
@@ -107,34 +126,18 @@ function AssetDialog({ preview, onClose }) {
       <button className="dialog-backdrop" type="button" onClick={onClose} aria-label="点击背景关闭素材预览" />
       <section className="asset-dialog-panel">
         <header>
-          <div>
-            <span>素材预览</span>
-            <h2 id="asset-dialog-title">{preview.node.title}</h2>
-          </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭素材预览">
-            <X aria-hidden="true" />
-          </button>
+          <div><span>素材预览</span><h2 id="asset-dialog-title">{preview.node.title}</h2></div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭素材预览"><X aria-hidden="true" /></button>
         </header>
         <div className="asset-stage">
           <img src={preview.asset.previewUrl} alt={`${preview.node.title} 的生成画面`} />
-          <button className="play-control" type="button" aria-label="播放预览" disabled>
-            <Play weight="fill" aria-hidden="true" />
-          </button>
+          <button className="play-control" type="button" aria-label="播放预览" disabled><Play weight="fill" aria-hidden="true" /></button>
           <span className="preview-still-label">预览帧</span>
         </div>
         <footer>
-          <div>
-            <span>类型</span>
-            <strong>{preview.asset.mediaType}</strong>
-          </div>
-          <div>
-            <span>素材 ID</span>
-            <strong>{truncateIdentifier(preview.asset.id)}</strong>
-          </div>
-          <div>
-            <span>大小</span>
-            <strong>{Math.max(1, Math.round(preview.asset.byteLength / 1024))} KB</strong>
-          </div>
+          <div><span>类型</span><strong>{preview.asset.mediaType}</strong></div>
+          <div><span>素材 ID</span><strong>{truncateIdentifier(preview.asset.id)}</strong></div>
+          <div><span>大小</span><strong>{Math.max(1, Math.round(preview.asset.byteLength / 1024))} KB</strong></div>
         </footer>
       </section>
     </dialog>
@@ -142,19 +145,26 @@ function AssetDialog({ preview, onClose }) {
 }
 
 export function App({ initialDocument = exampleDocument }) {
-  const [document, setDocument] = useState(initialDocument);
+  const [document, setDocument] = useState(() => parseCanvasDocument(initialDocument));
   const [draftId, setDraftId] = useState(initialDocument.activeDraftId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [preview, setPreview] = useState(null);
   const [notice, setNotice] = useState(null);
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProject(initialDocument));
 
   const model = useMemo(() => buildModel(document, draftId), [document, draftId]);
+  const serializedDocument = useMemo(() => serializeProject(document), [document]);
+  const isDirty = serializedDocument !== savedSnapshot;
 
   useEffect(() => {
-    const initialNode = chooseInitialNode(model.activeDraft);
-    setSelectedNodeId(initialNode?.id ?? null);
+    setSelectedNodeId((current) => {
+      if (current && model.activeDraft.nodes.some((node) => node.id === current)) return current;
+      return chooseInitialNode(model.activeDraft)?.id ?? null;
+    });
     setPreview(null);
-  }, [model.activeDraft.id]);
+  }, [model.activeDraft.id, model.activeDraft.nodes]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -162,54 +172,194 @@ export function App({ initialDocument = exampleDocument }) {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
+  const commitDocument = useCallback((nextDocument, message) => {
+    setUndoStack((items) => [...items.slice(-(HISTORY_LIMIT - 1)), document]);
+    setRedoStack([]);
+    setDocument(nextDocument);
+    setNotice({ tone: "success", message });
+  }, [document]);
+
+  const runMutation = useCallback((message, mutate, afterCommit) => {
+    try {
+      const nextDocument = mutate(document);
+      commitDocument(nextDocument, message);
+      afterCommit?.(nextDocument);
+    } catch (error) {
+      setNotice({ tone: "danger", message: error instanceof Error ? error.message : "无法完成编辑" });
+    }
+  }, [commitDocument, document]);
+
   const handleProjectFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-
     try {
-      const nextDocument = JSON.parse(await file.text());
+      const nextDocument = parseCanvasDocument(JSON.parse(await file.text()));
       const nextModel = buildModel(nextDocument, nextDocument.activeDraftId);
       setDocument(nextDocument);
       setDraftId(nextModel.activeDraftId);
+      setUndoStack([]);
+      setRedoStack([]);
+      setSavedSnapshot(serializeProject(nextDocument));
       setNotice({ tone: "success", message: `已打开 ${nextModel.project.title}` });
     } catch (error) {
       setNotice({ tone: "danger", message: error instanceof Error ? error.message : "无法读取项目文档" });
     }
   };
 
-  const handleDraftChange = (nextDraftId) => {
-    setDraftId(nextDraftId);
-    setNotice(null);
+  const handleDownload = () => {
+    const blob = new Blob([serializedDocument], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = projectFileName(model.project.title);
+    link.click();
+    URL.revokeObjectURL(url);
+    setSavedSnapshot(serializedDocument);
+    setNotice({ tone: "success", message: "项目 JSON 已导出" });
   };
 
-  const handleOpenPreview = (node, asset) => {
-    if (!asset.previewUrl) return;
-    setPreview({ node, asset });
-  };
+  const handleUndo = useCallback(() => {
+    const previous = undoStack.at(-1);
+    if (!previous) return;
+    setUndoStack((items) => items.slice(0, -1));
+    setRedoStack((items) => [document, ...items].slice(0, HISTORY_LIMIT));
+    setDocument(previous);
+    setNotice({ tone: "success", message: "已撤销" });
+  }, [document, undoStack]);
+
+  const handleRedo = useCallback(() => {
+    const next = redoStack[0];
+    if (!next) return;
+    setRedoStack((items) => items.slice(1));
+    setUndoStack((items) => [...items.slice(-(HISTORY_LIMIT - 1)), document]);
+    setDocument(next);
+    setNotice({ tone: "success", message: "已重做" });
+  }, [document, redoStack]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      event.preventDefault();
+      if (event.shiftKey) handleRedo();
+      else handleUndo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleRedo, handleUndo]);
+
+  const handleMoveNode = useCallback((nodeId, position) => {
+    const draft = findCanonicalDraft(document, draftId);
+    const node = draft.nodes.find((item) => item.id === nodeId);
+    if (!node || (node.position.x === position.x && node.position.y === position.y)) return;
+    runMutation("节点位置已更新", (current) => updateNode(current, {
+      draftId,
+      nodeId,
+      position,
+      expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }));
+  }, [document, draftId, runMutation]);
+
+  const handleAddNode = useCallback((kind, position) => {
+    const draft = findCanonicalDraft(document, draftId);
+    const count = draft.nodes.filter((node) => node.spec.kind === kind).length + 1;
+    const spec = kind === "composition" ? {
+      kind: "composition",
+      mediaType: "video/mp4",
+    } : {
+      kind: "shot",
+      prompt: "描述这个镜头的主体、动作、环境与镜头语言。",
+      mediaKind: "video",
+      inputAssetIds: [],
+      requirements: {
+        aspectRatio: "16:9",
+        durationSeconds: 5,
+        audio: "either",
+        mediaType: "video/mp4",
+      },
+    };
+    runMutation(kind === "composition" ? "已新增合成节点" : "已新增镜头节点", (current) => addNode(current, {
+      draftId,
+      title: kind === "composition" ? `合成 ${count}` : `镜头 ${count}`,
+      spec,
+      position,
+      expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }), (nextDocument) => {
+      const nextDraft = findCanonicalDraft(nextDocument, draftId);
+      setSelectedNodeId(nextDraft.nodes.at(-1)?.id ?? null);
+    });
+  }, [document, draftId, runMutation]);
+
+  const handleConnectNodes = useCallback((connection) => {
+    runMutation(connection.kind === "sequence" ? "已建立镜头顺序" : "已建立生成依赖", (current) => connectNodes(current, {
+      draftId,
+      ...connection,
+      expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }));
+  }, [draftId, runMutation]);
+
+  const handleDeleteEdges = useCallback((edgeIds) => {
+    if (edgeIds.length === 0) return;
+    runMutation("已删除连线", (current) => edgeIds.reduce((next, edgeId) => disconnectEdge(next, {
+      draftId,
+      edgeId,
+      expectedProjectRevision: next.revision,
+      expectedDraftRevision: findCanonicalDraft(next, draftId).revision,
+    }), current));
+  }, [draftId, runMutation]);
+
+  const handleUpdatePrompt = useCallback((nodeId, prompt) => {
+    runMutation("Prompt 已更新，相关节点已标记为待生成", (current) => updateNode(current, {
+      draftId,
+      nodeId,
+      prompt,
+      expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }));
+  }, [draftId, runMutation]);
+
+  const handleOpenPreview = useCallback((node, asset) => {
+    if (asset.previewUrl) setPreview({ node, asset });
+  }, []);
 
   return (
     <main className="app-shell">
-      <ProjectHeader model={model} onDraftChange={handleDraftChange} onProjectFile={handleProjectFile} />
+      <ProjectHeader
+        model={model}
+        isDirty={isDirty}
+        canUndo={undoStack.length > 0}
+        canRedo={redoStack.length > 0}
+        onDraftChange={(nextDraftId) => { setDraftId(nextDraftId); setNotice(null); }}
+        onProjectFile={handleProjectFile}
+        onDownload={handleDownload}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+      />
       <CanvasViewport
         draft={model.activeDraft}
         selectedNodeId={selectedNodeId}
         onSelectNode={setSelectedNodeId}
         onOpenPreview={handleOpenPreview}
+        onMoveNode={handleMoveNode}
+        onAddNode={handleAddNode}
+        onConnectNodes={handleConnectNodes}
+        onDeleteEdges={handleDeleteEdges}
+        onUpdatePrompt={handleUpdatePrompt}
       />
 
-      <div className="canvas-note" aria-label="预览说明">
+      <div className="canvas-note" role="note" aria-label="编辑说明">
         <Info weight="fill" aria-hidden="true" />
-        <span>CLI 写入项目文档，当前画布仅用于查看。</span>
+        <span>拖动节点编辑布局；从端口建立关系；Delete 删除选中连线。</span>
       </div>
 
       {notice ? (
         <div className={`toast ${notice.tone}`} role="status">
-          {notice.tone === "danger" ? (
-            <WarningCircle weight="fill" aria-hidden="true" />
-          ) : (
-            <CheckCircle weight="fill" aria-hidden="true" />
-          )}
+          {notice.tone === "danger" ? <WarningCircle weight="fill" aria-hidden="true" /> : <CheckCircle weight="fill" aria-hidden="true" />}
           {notice.message}
         </div>
       ) : null}

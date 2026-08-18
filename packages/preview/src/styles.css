@@ -114,7 +114,8 @@ select:focus-visible,
 .header-actions,
 .status-summary,
 .secondary-button,
-.readonly-badge {
+.editor-badge,
+.history-controls {
   display: flex;
   align-items: center;
 }
@@ -201,7 +202,7 @@ select:focus-visible,
 }
 
 .variation-chip,
-.readonly-badge {
+.editor-badge {
   height: 24px;
   padding: 0 8px;
   border-radius: 999px;
@@ -277,11 +278,63 @@ select:focus-visible,
   height: 17px;
 }
 
-.readonly-badge {
+.editor-badge {
   color: var(--ink-secondary);
   background: var(--surface);
   border: 1px solid var(--border-quiet);
   white-space: nowrap;
+}
+
+.editor-badge.dirty {
+  color: var(--warning);
+  background: oklch(0.79 0.14 77 / 0.1);
+  border-color: oklch(0.79 0.14 77 / 0.28);
+}
+
+.history-controls {
+  height: 38px;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border-quiet);
+  border-radius: 9px;
+}
+
+.history-controls button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-secondary);
+  background: transparent;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.history-controls button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.history-controls button:disabled {
+  cursor: default;
+  opacity: 0.32;
+}
+
+.history-controls svg {
+  width: 16px;
+  height: 16px;
+}
+
+.primary-action {
+  color: var(--bg-deep);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.primary-action:hover {
+  color: var(--bg-deep);
+  background: oklch(0.86 0.006 230);
 }
 
 .canvas-viewport {
@@ -291,63 +344,54 @@ select:focus-visible,
   overflow: hidden;
   touch-action: none;
   user-select: none;
-  background-color: var(--bg);
-  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1.2px);
-  background-position: var(--grid-x) var(--grid-y);
-  background-size: var(--grid-size) var(--grid-size);
+  background: var(--bg);
 }
 
-.canvas-viewport.tool-pan {
+.canvas-viewport > .react-flow {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas-viewport.tool-pan .react-flow__pane {
   cursor: grab;
 }
 
-.canvas-viewport.dragging {
+.canvas-viewport.tool-select .react-flow__node {
+  cursor: grab;
+}
+
+.canvas-viewport.tool-select .react-flow__node.dragging,
+.canvas-viewport.tool-pan .react-flow__pane.dragging {
   cursor: grabbing;
 }
 
-.canvas-world {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 1400px;
-  height: 920px;
-  transform-origin: 0 0;
-  will-change: transform;
-}
-
-.edge-layer {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.edge-path {
+.react-flow__edge.canvas-edge .react-flow__edge-path {
   fill: none;
   stroke-width: 1.6;
   vector-effect: non-scaling-stroke;
 }
 
-.edge-path.sequence {
+.react-flow__edge.canvas-edge.sequence .react-flow__edge-path {
   stroke: oklch(0.68 0.012 230 / 0.68);
   stroke-dasharray: 7 6;
 }
 
-.edge-path.dependency {
+.react-flow__edge.canvas-edge.dependency .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.9;
 }
 
-#sequence-arrow path {
-  fill: oklch(0.68 0.012 230 / 0.8);
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 2.7;
 }
 
-#dependency-arrow path {
-  fill: var(--accent);
+.react-flow__connection-path {
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
 .canvas-node {
-  position: absolute;
+  position: relative;
   z-index: 2;
   width: 296px;
   display: flex;
@@ -358,6 +402,18 @@ select:focus-visible,
   border-radius: 12px;
   cursor: pointer;
   transition: border-color 170ms ease-out, background 170ms ease-out, box-shadow 170ms ease-out;
+}
+
+.react-flow__node-creatorNode {
+  width: 296px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.react-flow__node-creatorNode.selected {
+  z-index: 12 !important;
 }
 
 .canvas-node:hover {
@@ -382,7 +438,8 @@ select:focus-visible,
   color: inherit;
   text-align: left;
   background: transparent;
-  cursor: pointer;
+  cursor: inherit;
+  user-select: none;
 }
 
 .node-header strong {
@@ -606,24 +663,42 @@ select:focus-visible,
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-.port {
-  position: absolute;
-  top: calc(50% - 6px);
-  z-index: 3;
-  width: 12px;
-  height: 12px;
+.react-flow__handle.canvas-handle {
+  z-index: 4;
+  width: 11px;
+  height: 11px;
   background: var(--surface);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border: 2px solid var(--ink-muted);
+  box-shadow: 0 0 0 3px oklch(0.64 0.008 230 / 0.12);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out;
 }
 
-.input-port {
-  left: -7px;
+.react-flow__handle.canvas-handle:hover,
+.react-flow__handle.canvas-handle.connectingfrom,
+.react-flow__handle.canvas-handle.connectingto {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  transform: scale(1.14);
 }
 
-.output-port {
-  right: -7px;
+.react-flow__handle.dependency-handle {
+  border-color: var(--accent);
+}
+
+.react-flow__handle-bottom.canvas-handle {
+  bottom: -6px;
+}
+
+.react-flow__handle-top.canvas-handle {
+  top: -6px;
+}
+
+.react-flow__handle-left.canvas-handle {
+  left: -6px;
+}
+
+.react-flow__handle-right.canvas-handle {
+  right: -6px;
 }
 
 .parameter-panel {
@@ -690,6 +765,60 @@ select:focus-visible,
   font-size: 10px;
   line-height: 1.5;
   text-wrap: pretty;
+}
+
+.prompt-editor {
+  position: relative;
+  margin: 12px 0;
+}
+
+.prompt-editor label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 1;
+  color: var(--ink-muted);
+  font-size: 8px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.prompt-editor textarea {
+  width: 100%;
+  min-height: 76px;
+  padding: 22px 82px 9px 10px;
+  resize: vertical;
+  color: var(--ink-secondary);
+  background: var(--bg-deep);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  font: 10px/1.5 inherit;
+}
+
+.prompt-editor textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.prompt-editor button {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  height: 25px;
+  padding: 0 8px;
+  color: var(--bg-deep);
+  background: var(--ink);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.prompt-editor button:disabled {
+  color: var(--ink-muted);
+  background: var(--surface-raised);
+  cursor: default;
 }
 
 .parameter-grid {
@@ -1082,7 +1211,7 @@ select:focus-visible,
   }
 
   .status-summary,
-  .readonly-badge {
+  .editor-badge {
     display: none;
   }
 
@@ -1131,6 +1260,10 @@ select:focus-visible,
     margin-left: 0;
   }
 
+  .history-controls {
+    display: none;
+  }
+
   .secondary-button {
     width: 44px;
     height: 44px;
@@ -1144,7 +1277,8 @@ select:focus-visible,
 
   .canvas-dock {
     bottom: max(16px, env(safe-area-inset-bottom));
-    width: 216px;
+    width: auto;
+    max-width: calc(100vw - 24px);
     height: 50px;
     justify-content: center;
   }

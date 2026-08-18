@@ -174,7 +174,7 @@ constructing an authorization header.
 The following are mandatory:
 
 - Never write credential values to source, local project files, the canvas
-  document, Multica configuration or metadata, fixtures, snapshots, errors, or
+  document, task-tracker configuration or metadata, fixtures, snapshots, errors, or
   logs.
 - Redact authorization headers and query parameters before transport logging.
 - Prefer authorization headers. In particular, the Gemini adapter sends

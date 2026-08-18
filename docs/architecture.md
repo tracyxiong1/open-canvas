@@ -1,16 +1,15 @@
 # Creator Canvas architecture and draft-based project document v1
 
-Status: MVP architecture decision for JIM-11.
+Status: implemented MVP architecture baseline.
 
 The project document is the durable source of truth shared by the CLI, Codex
-creation skill, and preview. A project owns one or more drafts; each draft is an
+creation skill, and studio. A project owns one or more drafts; each draft is an
 independent editable canvas with its own graph, jobs, and revision, while assets
-are shared by the project. The CLI is the only writer. The skill plans work and
-invokes the CLI; it does not edit JSON itself. The preview selects and reads one
-draft from the same document and project-local assets; it does not run providers
-or receive credentials.
+are shared by the project. The CLI is the filesystem writer. The skill plans
+work and invokes the CLI; it does not edit JSON itself. The browser studio uses
+the same command core for validated in-memory edits and explicitly imports or
+exports project JSON. It does not run providers or receive credentials.
 
-This decision deliberately stops before scaffolding TypeScript packages or UI.
 The machine-readable v1 contract is
 `docs/schema/canvas-document-v1.schema.json`, with complete examples in
 `docs/examples/`.
@@ -19,26 +18,26 @@ The machine-readable v1 contract is
 
 | MVP requirement | Architecture decision |
 | --- | --- |
-| One model for CLI, skill, and preview | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
+| One model for CLI, skill, and studio | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
 | Draft-based creation | A project has one or more switchable drafts; each draft owns an independent canvas and may record the draft it was copied from. |
 | Three-shot graph | Within a draft, `shot` nodes are ordered with `sequence` edges and feed a `composition` through `dependency` edges. |
 | Targeted follow-up edits | Only the edited node and transitive `dependency` descendants in the selected draft become `dirty`; other drafts are unchanged. |
 | Observable generation | Nodes expose current execution state while jobs retain attempt history and normalized provider state. |
 | Restart-safe providers | The resolved route and provider job ID are persisted on the job before subsequent polling. |
 | Durable assets | Provider artifacts are streamed into a project-local, content-addressed asset store before their metadata is committed. |
-| BYOK isolation | Credentials remain process-local environment values and are forbidden from the document, assets, logs, and preview. |
-| Small TypeScript implementation | One shared core package will own schema validation, mutations, persistence, routing, and jobs; the CLI and preview are thin consumers. |
+| BYOK isolation | Credentials remain process-local environment values and are forbidden from the document, assets, logs, and studio. |
+| Small TypeScript implementation | One shared core package owns schema validation, mutations, persistence, routing, and jobs; the CLI and studio are thin consumers. |
 
 ## Decision and rejected alternatives
 
-The repository will use a small npm workspace when implementation begins:
+The repository uses a small npm workspace:
 
 ```text
 package.json
 packages/
   core/                 # schema/types, graph mutations, invalidation, storage, jobs
-  cli/                  # first-party command surface; the only canvas writer
-  preview/              # read-only standalone web app
+  cli/                  # first-party command surface and filesystem writer
+  preview/              # React Flow editor using the browser-safe core entry
 skills/
   create-video/         # Codex instructions that invoke the CLI
 ```
@@ -46,13 +45,15 @@ skills/
 `@creator-canvas/core` is the only shared TypeScript dependency. Splitting
 schema, graph, persistence, providers, and jobs into separate packages would
 add release and dependency overhead without creating an MVP deployment
-boundary. A single application package would instead tempt the CLI and preview
+boundary. A single application package would instead tempt the CLI and studio
 to develop incompatible document models. A database or local server is also
-unnecessary: the MVP has one local writer and a read-only preview.
+unnecessary: the MVP has one filesystem writer and an explicit local-file web
+editing loop. A local project service may replace import/export later without
+changing command semantics.
 
-The checked-in JSON Schema is canonical until `packages/core` exists. The core
-package must expose a runtime validator and TypeScript types derived from this
-contract; it must not maintain a second handwritten shape. Schema version 1 is
+The checked-in JSON Schema is canonical. The core exposes a runtime validator
+and generates TypeScript types from this contract; it does not maintain a
+second handwritten shape. Schema version 1 is
 closed to unknown fields (`additionalProperties: false`). A future incompatible
 shape requires a new integer `schemaVersion`, schema file, explicit migration,
 and fixture. Readers must reject unsupported versions rather than guess.
@@ -63,9 +64,9 @@ and fixture. Readers must reject unsupported versions rather than guess.
 
 - `schemaVersion`: the document format version, currently `1`.
 - `revision`: the project-wide optimistic-concurrency revision. Every successful
-  CLI transaction increments it exactly once.
+  command-core mutation increments it exactly once.
 - `project`: stable project identity and display metadata.
-- `activeDraftId`: the draft selected by default for CLI and preview commands.
+- `activeDraftId`: the draft selected by default for CLI and studio commands.
 - `drafts`: one or more independent editable canvases. A draft owns its
   `revision`, optional `sourceDraftId`, `nodes`, `edges`, and `jobs`.
 - `assets`: project-shared metadata for immutable local blobs.
@@ -277,15 +278,16 @@ them. The CLI verifies byte length and checksum on read/export.
 Writes use a project-local lock plus project and selected-draft revision checks.
 The CLI writes and fsyncs a temporary file in `.creator-canvas/tmp/`, validates
 it, then renames it over `project.json` on the same filesystem. A lock file and
-temporary files are operational state, never document truth. The preview
-watches `project.json`, selects `activeDraftId` unless given an explicit draft,
-reloads only after a successful parse/validation, and keeps its last valid
-snapshot during a partial or rejected read.
+temporary files are operational state, never document truth. The browser
+studio imports a selected JSON document, rejects invalid input before replacing
+its current state, edits through the browser-safe command core, and exports an
+explicitly validated snapshot. A future local project service may connect that
+session directly to the same storage transaction boundary.
 
 Credentials are resolved from the selected provider's local environment
 variable only inside the CLI immediately before adapter I/O. Credential values,
 headers, provider response dumps, and secret-bearing URLs must never enter any
-project file, fixture, error, log, or preview payload.
+project file, fixture, error, log, or studio payload.
 
 ## Normative examples
 
