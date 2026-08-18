@@ -1,4 +1,4 @@
-# Creator Canvas agent contract
+# Open Canvas agent contract
 
 ## Product boundary
 

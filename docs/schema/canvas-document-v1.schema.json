@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://creator-canvas.invalid/schema/canvas-document-v1.schema.json",
-  "title": "Creator Canvas draft-based project document v1",
+  "$id": "https://open-canvas.invalid/schema/canvas-document-v1.schema.json",
+  "title": "Open Canvas draft-based project document v1",
   "type": "object",
   "additionalProperties": false,
   "required": [

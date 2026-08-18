@@ -1,6 +1,6 @@
-# Creator Canvas studio
+# Open Canvas studio
 
-Standalone React Flow editor for the canonical Creator Canvas project document.
+Standalone React Flow editor for the canonical Open Canvas project document.
 
 ```bash
 npm install

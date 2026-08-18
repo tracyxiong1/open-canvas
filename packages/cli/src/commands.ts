@@ -22,7 +22,7 @@ import {
   type CanvasDocument,
   type Draft,
   type ShotSpec,
-} from "@creator-canvas/core";
+} from "@open-canvas/core";
 
 import { CliUsageError, numberFlag, optionalFlag, requiredFlag, type ParsedArgs } from "./args.js";
 
@@ -124,7 +124,7 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
 
 async function initCommand(args: ParsedArgs): Promise<unknown> {
   const projectDirectory = args.positionals[1];
-  if (!projectDirectory) throw new CliUsageError("Usage: creator-canvas init <directory> --title <title>");
+  if (!projectDirectory) throw new CliUsageError("Usage: open-canvas init <directory> --title <title>");
   const draftTitle = optionalFlag(args, "draft-title");
   const document = createProject({
     title: requiredFlag(args, "title"),

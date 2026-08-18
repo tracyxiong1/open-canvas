@@ -5,7 +5,7 @@ import schema from "../schema/canvas-document-v1.schema.json" with { type: "json
 import { canonicalSha256 } from "./canonical.js";
 import type {
   Asset,
-  CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
+  OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Node,
 } from "./canvas-document.generated.js";

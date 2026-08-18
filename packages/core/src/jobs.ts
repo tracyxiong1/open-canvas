@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { v7 as uuidv7 } from "uuid";
 
 import type {
-  CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
+  OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Job,
   Node,

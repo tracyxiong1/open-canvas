@@ -43,7 +43,7 @@ export type Job = {
   updatedAt: Timestamp;
 };
 
-export interface CreatorCanvasDraftBasedProjectDocumentV1 {
+export interface OpenCanvasDraftBasedProjectDocumentV1 {
   schemaVersion: 1;
   revision: number;
   project: Project;

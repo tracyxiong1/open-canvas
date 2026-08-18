@@ -5,7 +5,7 @@ import {
   disconnectEdge,
   parseCanvasDocument,
   updateNode,
-} from "@creator-canvas/core/browser";
+} from "@open-canvas/core/browser";
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
@@ -41,7 +41,7 @@ function findCanonicalDraft(document, draftId) {
 
 function projectFileName(title) {
   const safeTitle = title.trim().replace(/[^\p{Letter}\p{Number}._-]+/gu, "-").replace(/^-+|-+$/g, "");
-  return `${safeTitle || "creator-canvas"}.json`;
+  return `${safeTitle || "open-canvas"}.json`;
 }
 
 function serializeProject(document) {
@@ -70,7 +70,7 @@ function ProjectHeader({
       <div className="project-identity">
         <div className="project-mark" aria-hidden="true"><FilmSlate weight="fill" /></div>
         <div className="project-copy">
-          <span className="project-kicker">创作画布</span>
+          <span className="project-kicker">Open Canvas</span>
           <strong title={model.project.title}>{model.project.title}</strong>
         </div>
       </div>
