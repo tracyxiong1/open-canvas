@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
     }
   },
   "scripts": {
@@ -16,6 +20,7 @@
     "test": "npm run schema:generate && node --import tsx --test test/**/*.test.ts"
   },
   "dependencies": {
+    "@noble/hashes": "^2.3.0",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "uuid": "^11.1.0"

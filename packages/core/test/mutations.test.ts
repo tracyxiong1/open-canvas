@@ -8,6 +8,7 @@ import {
   connectNodes,
   copyDraft,
   createProject,
+  disconnectEdge,
   parseCanvasDocument,
   updateNode,
 } from "../src/index.js";
@@ -158,6 +159,40 @@ test("sequence edges reject cycles even before a composition exists", () => {
       }),
     /sequence cycle/,
   );
+});
+
+test("disconnecting an edge is revision checked and keeps the document valid", () => {
+  let document = createProject({ title: "Disconnect" });
+  for (const title of ["One", "Two"]) {
+    const draft = document.drafts[0];
+    document = addNode(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      title,
+      spec: { kind: "shot", prompt: title, mediaKind: "image", inputAssetIds: [] },
+    });
+  }
+  const draft = document.drafts[0];
+  document = connectNodes(document, {
+    draftId: draft.id,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: draft.revision,
+    kind: "sequence",
+    sourceNodeId: draft.nodes[0].id,
+    targetNodeId: draft.nodes[1].id,
+  });
+  const connectedDraft = document.drafts[0];
+  const disconnected = disconnectEdge(document, {
+    draftId: connectedDraft.id,
+    edgeId: connectedDraft.edges[0].id,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: connectedDraft.revision,
+  });
+
+  assert.equal(disconnected.drafts[0].edges.length, 0);
+  assert.equal(disconnected.revision, document.revision + 1);
+  assert.equal(disconnected.drafts[0].revision, connectedDraft.revision + 1);
 });
 
 test("prompt updates reject composition nodes instead of committing a no-op", async () => {

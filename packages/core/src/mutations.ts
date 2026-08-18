@@ -154,6 +154,34 @@ export function connectNodes(input: CanvasDocument, options: ConnectNodesOptions
   return finishMutation(document, draft, now(options.now));
 }
 
+export interface DisconnectEdgeOptions {
+  draftId: string;
+  edgeId: string;
+  expectedProjectRevision: number;
+  expectedDraftRevision: number;
+  now?: string;
+}
+
+export function disconnectEdge(input: CanvasDocument, options: DisconnectEdgeOptions): CanvasDocument {
+  const { document, draft } = prepareMutation(
+    input,
+    options.draftId,
+    options.expectedProjectRevision,
+    options.expectedDraftRevision,
+  );
+  const edgeIndex = draft.edges.findIndex((edge) => edge.id === options.edgeId);
+  if (edgeIndex === -1) throw new Error(`Unknown edge: ${options.edgeId}`);
+  draft.edges.splice(edgeIndex, 1);
+  for (const node of draft.nodes.filter((candidate) => candidate.spec.kind === "composition")) {
+    node.execution = {
+      status: "dirty",
+      inputFingerprint: computeNodeFingerprint(document, draft, node),
+      outputAssetIds: [],
+    };
+  }
+  return finishMutation(document, draft, now(options.now));
+}
+
 export interface UpdateNodeOptions {
   draftId: string;
   nodeId: string;
