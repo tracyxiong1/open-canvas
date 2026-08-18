@@ -1,0 +1,17 @@
+{
+  "name": "@creator-canvas/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "creator-canvas": "./bin/creator-canvas.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build --workspace @creator-canvas/core && node --import tsx --test test/**/*.test.ts"
+  },
+  "dependencies": {
+    "@creator-canvas/core": "0.1.0"
+  }
+}

@@ -1,0 +1,748 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://creator-canvas.invalid/schema/canvas-document-v1.schema.json",
+  "title": "Creator Canvas draft-based project document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "revision",
+    "project",
+    "activeDraftId",
+    "drafts",
+    "assets"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "activeDraftId": {
+      "$ref": "#/$defs/draftId"
+    },
+    "drafts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/draft"
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      }
+    }
+  },
+  "$defs": {
+    "uuidV7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "projectId": {
+      "type": "string",
+      "pattern": "^project_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "draftId": {
+      "type": "string",
+      "pattern": "^draft_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "nodeId": {
+      "type": "string",
+      "pattern": "^node_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "edgeId": {
+      "type": "string",
+      "pattern": "^edge_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "jobId": {
+      "type": "string",
+      "pattern": "^job_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "assetId": {
+      "type": "string",
+      "pattern": "^asset_sha256_[0-9a-f]{64}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/projectId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "revision",
+        "createdAt",
+        "updatedAt",
+        "nodes",
+        "edges",
+        "jobs"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/draftId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceDraftId": {
+          "$ref": "#/$defs/draftId"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/job"
+          }
+        }
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      }
+    },
+    "routeHint": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "routingHints": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "promptOverride": {
+          "$ref": "#/$defs/routeHint"
+        },
+        "aiChoice": {
+          "$ref": "#/$defs/routeHint"
+        }
+      }
+    },
+    "outputRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "aspectRatio": {
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "durationSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "audio": {
+          "enum": [
+            "required",
+            "forbidden",
+            "either"
+          ]
+        },
+        "mediaType": {
+          "type": "string",
+          "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
+        }
+      }
+    },
+    "shotSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prompt",
+        "mediaKind",
+        "inputAssetIds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "shot"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaKind": {
+          "enum": [
+            "image",
+            "video"
+          ]
+        },
+        "inputAssetIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/assetId"
+          }
+        },
+        "requirements": {
+          "$ref": "#/$defs/outputRequirements"
+        },
+        "routing": {
+          "$ref": "#/$defs/routingHints"
+        }
+      }
+    },
+    "compositionSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "mediaType"
+      ],
+      "properties": {
+        "kind": {
+          "const": "composition"
+        },
+        "mediaType": {
+          "const": "video/mp4"
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "inputFingerprint",
+        "outputAssetIds"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "dirty",
+            "queued",
+            "running",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "inputFingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "activeJobId": {
+          "$ref": "#/$defs/jobId"
+        },
+        "outputAssetIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/assetId"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "dirty"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outputAssetIds": {
+                "maxItems": 0
+              }
+            },
+            "not": {
+              "required": [
+                "activeJobId"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "queued",
+                  "running",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "activeJobId"
+            ],
+            "properties": {
+              "outputAssetIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "activeJobId"
+            ],
+            "properties": {
+              "outputAssetIds": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "position",
+        "specRevision",
+        "spec",
+        "execution"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "specRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/shotSpec"
+            },
+            {
+              "$ref": "#/$defs/compositionSpec"
+            }
+          ]
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "sourceNodeId",
+        "targetNodeId"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/edgeId"
+        },
+        "kind": {
+          "enum": [
+            "dependency",
+            "sequence"
+          ]
+        },
+        "sourceNodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "targetNodeId": {
+          "$ref": "#/$defs/nodeId"
+        }
+      }
+    },
+    "resolvedRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "modelId",
+        "selectionSource"
+      ],
+      "properties": {
+        "providerId": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "modelId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "selectionSource": {
+          "enum": [
+            "prompt_override",
+            "ai_choice",
+            "registry_default"
+          ]
+        }
+      }
+    },
+    "jobError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "retryable",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "provider_rejected",
+            "provider_unavailable",
+            "provider_protocol",
+            "missing_credential"
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "nodeId",
+        "attempt",
+        "inputFingerprint",
+        "status",
+        "route",
+        "outputAssetIds",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "nodeId": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "inputFingerprint": {
+          "$ref": "#/$defs/sha256"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "route": {
+          "$ref": "#/$defs/resolvedRoute"
+        },
+        "providerJobId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "outputAssetIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/assetId"
+          }
+        },
+        "error": {
+          "$ref": "#/$defs/jobError"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "queued",
+                  "running"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outputAssetIds": {
+                "maxItems": 0
+              }
+            },
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "running"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "providerJobId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "succeeded"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "providerJobId"
+            ],
+            "properties": {
+              "outputAssetIds": {
+                "minItems": 1
+              }
+            },
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "error"
+            ],
+            "properties": {
+              "outputAssetIds": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "byteLength",
+        "checksumSha256",
+        "path",
+        "origin",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/assetId"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video"
+          ]
+        },
+        "mediaType": {
+          "type": "string",
+          "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "checksumSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^assets/sha256/[0-9a-f]{64}$"
+        },
+        "origin": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "draftId",
+                "jobId"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "job"
+                },
+                "draftId": {
+                  "$ref": "#/$defs/draftId"
+                },
+                "jobId": {
+                  "$ref": "#/$defs/jobId"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "import"
+                }
+              }
+            }
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    }
+  }
+}
