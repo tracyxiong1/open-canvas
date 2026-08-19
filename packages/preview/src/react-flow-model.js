@@ -53,7 +53,13 @@ export function toFlowNodes(draft, selectedNodeId, data = {}, presentationScale 
 
 export function toFlowEdges(draft, selectedNodeId = null) {
   const nodesById = new Map(draft.nodes.map((node) => [node.id, node]));
-  return draft.edges.map((edge) => ({
+  return draft.edges.map((edge) => {
+    const targetStatus = nodesById.get(edge.targetNodeId)?.status;
+    const connectedToSelection = selectedNodeId != null && (
+      edge.sourceNodeId === selectedNodeId || edge.targetNodeId === selectedNodeId
+    );
+    const active = connectedToSelection || targetStatus === "queued" || targetStatus === "running";
+    return ({
     id: edge.id,
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
@@ -66,11 +72,12 @@ export function toFlowEdges(draft, selectedNodeId = null) {
     // The visual connection is a direct source-right to target-left relation;
     // semantic kinds remain intact for validation and document mutations.
     type: "canvasEdge",
-    className: `canvas-edge ${edge.kind}${edge.sourceNodeId === selectedNodeId || edge.targetNodeId === selectedNodeId ? " active" : ""}`,
+    className: `canvas-edge ${edge.kind}${active ? " active" : ""}`,
     markerEnd: undefined,
     deletable: true,
-    data: { kind: edge.kind },
-  }));
+    data: { kind: edge.kind, active },
+    });
+  });
 }
 
 function overlaps(left, right, gap = 36) {

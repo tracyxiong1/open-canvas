@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
   BaseEdge,
-  getStraightPath,
+  getBezierPath,
   Handle,
   MiniMap,
   Position,
@@ -14,49 +14,65 @@ import {
 } from "@xyflow/react";
 import {
   Aperture,
+  Article,
   ArrowLeft,
   ArrowUp,
   ArrowsOutSimple,
-  BezierCurve,
+  Atom,
+  Binoculars,
   CaretRight,
   CheckCircle,
   Clock,
   CornersOut,
   Crop,
   Crosshair,
+  CrosshairSimple,
   Cube,
   Cursor,
   DownloadSimple,
   Eraser,
   FilmSlate,
   FileText,
+  FlowArrow,
   FolderSimple,
   GridFour,
+  GridNine,
   GlobeHemisphereWest,
-  GitBranch,
+  Hand,
   HighDefinition,
   ImageSquare,
+  Info,
   Keyboard,
-  Magnet,
-  MapTrifold,
+  Lightning,
+  LinkSimple,
+  MapPinArea,
   MagnifyingGlassPlus,
   Minus,
+  Mountains,
+  Panorama,
   Paperclip,
-  PaintBrush,
+  PaintBrushBroad,
   Pause,
   PencilSimple,
   Plus,
   Question,
+  Rectangle,
   Scissors,
+  ShareNetwork,
   Shapes,
+  SidebarSimple,
   SpeakerHigh,
   Sparkle,
   SpinnerGap,
   Stack,
+  SunHorizon,
   Smiley,
+  SlidersHorizontal,
   TextAlignLeft,
   TextT,
+  Translate,
   UploadSimple,
+  User,
   UserCircle,
   UsersThree,
   VideoCamera,
@@ -97,7 +113,10 @@ function StatusIcon({ status }) {
 }
 
 function getSurfaceKind(node) {
-  if (node.kind === "composition") return node.spec.role ?? "composition";
+  if (node.kind === "composition") {
+    if ((node.spec.role ?? "composition") === "composition" && node.spec.mediaType?.startsWith("image/")) return "image";
+    return node.spec.role ?? "composition";
+  }
   return node.spec.mediaKind === "image" ? "image" : "video";
 }
 
@@ -119,7 +138,7 @@ function SurfaceIcon({ kind }) {
 }
 
 function NodeLabelIcon({ kind }) {
-  if (kind === "text") return <TextAlignLeft weight="regular" aria-hidden="true" />;
+  if (kind === "text") return <Article weight="fill" aria-hidden="true" />;
   if (kind === "image") return <ImageSquare weight="fill" aria-hidden="true" />;
   if (kind === "smart-edit") return <Scissors weight="fill" aria-hidden="true" />;
   if (kind === "director") return <FilmSlate weight="fill" aria-hidden="true" />;
@@ -133,10 +152,11 @@ function NodeLabelIcon({ kind }) {
 
 function NodeMedia({ node, kind, onOpenPreview }) {
   const asset = node.outputAssets.find((item) => item.previewUrl);
+  const operationNode = node.kind === "composition" && kind === "image";
   if (kind === "text") {
     return (
       <div className="node-media node-media-text" aria-label={`${node.title} ${node.statusMeta.label}`}>
-        <TextAlignLeft weight="thin" aria-hidden="true" />
+        <TextAlignLeft weight="regular" aria-hidden="true" />
       </div>
     );
   }
@@ -160,6 +180,14 @@ function NodeMedia({ node, kind, onOpenPreview }) {
     );
   }
 
+  if (operationNode) {
+    return (
+      <div className="node-media node-media-operation" aria-label={`${node.title} ${node.statusMeta.label}`}>
+        {node.title === "高清" ? <span>{node.spec.prompt}</span> : <Mountains weight="fill" aria-hidden="true" />}
+      </div>
+    );
+  }
+
   return (
     <div className="node-media node-media-empty" aria-label={`${node.title} ${node.statusMeta.label}`}>
       <SurfaceIcon kind={kind} />
@@ -172,8 +200,9 @@ function NodeMedia({ node, kind, onOpenPreview }) {
   );
 }
 
-function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
-  const canEditPrompt = node.kind === "shot" || isContextNode(node);
+function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
+  const canEditPrompt = node.kind === "shot" || isContextNode(node) || (node.spec.role === "composition" && Boolean(node.spec.prompt));
+  const portraitMode = quickActionMode === "portrait";
   const [prompt, setPrompt] = useState(canEditPrompt ? node.spec.prompt : "");
   const requirements = node.spec.requirements ?? {};
   const upstreamNode = graph?.edges?.map((edge) => edge.targetNodeId === node.id ? graph.nodes.find((item) => item.id === edge.sourceNodeId) : null)
@@ -181,8 +210,8 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
   const upstreamPreview = upstreamNode?.outputAssets.find((asset) => asset.previewUrl)?.previewUrl ?? null;
 
   useEffect(() => {
-    setPrompt(node.spec.kind === "shot" || isContextNode(node) ? node.spec.prompt : "");
-  }, [node.id, node.specRevision, node.spec]);
+    setPrompt(canEditPrompt ? node.spec.prompt : "");
+  }, [canEditPrompt, node.id, node.specRevision, node.spec]);
 
   const submitPrompt = (event) => {
     event.preventDefault();
@@ -240,7 +269,7 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
 
   return (
     <section
-      className="node-composer node-composer-media nodrag nowheel"
+      className={`node-composer node-composer-media nodrag nowheel${portraitMode ? " portrait-mode" : ""}`}
       onClick={(event) => event.stopPropagation()}
       aria-label={`${node.title} 参数`}
     >
@@ -249,6 +278,7 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
           <span><Plus weight="bold" />参考</span>
           <span><Paperclip />标记</span>
           <span><Sparkle weight="fill" />风格</span>
+          {portraitMode ? <span><Crosshair />聚焦</span> : null}
         </div>
         <div className="composer-input-row">
           <span className={`composer-type composer-type-${kind}`} aria-hidden="true"><NodeLabelIcon kind={kind} /></span>
@@ -270,20 +300,22 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
         </div>
         <footer className="composer-tools composer-tools-media">
           <div className="composer-settings-group">
-            <button type="button" className="composer-provider" aria-label="选择生成模型"><Sparkle weight="fill" aria-hidden="true" /><span>图像模型</span><CaretRight aria-hidden="true" /></button>
+            <button type="button" className="composer-provider" aria-label="选择生成模型"><Sparkle weight="fill" aria-hidden="true" /><span>{portraitMode ? "General image V2" : "图像模型"}</span><CaretRight aria-hidden="true" /></button>
             <span className="composer-divider" />
-            <button type="button" className="composer-settings" aria-label="调整图像规格"><span>{`${requirements.aspectRatio ?? "16:9"} · 标准画质 · ${requirements.width ? "2K" : "高清"} · 1张`}</span><CaretRight aria-hidden="true" /></button>
+            <button type="button" className="composer-settings" aria-label="调整图像规格"><Rectangle weight="regular" aria-hidden="true" /><span>{portraitMode
+              ? `${requirements.aspectRatio ?? "16:9"} · ${requirements.width ? "2K" : "高清"} · 1张`
+              : `${requirements.aspectRatio ?? "16:9"} · 标准画质 · ${requirements.width ? "2K" : "高清"} · 1张`}</span><CaretRight aria-hidden="true" /></button>
             <span className="composer-divider" />
             <button type="button" className="composer-utility composer-preset" aria-label="预设"><Shapes aria-hidden="true" /></button>
             <button type="button" className="composer-utility" aria-label="扩展图像参数"><Aperture aria-hidden="true" /></button>
-          </div>
+            </div>
           <div className="composer-tools-end">
             <div className="composer-utilities">
-              <button type="button" className="composer-utility" aria-label="翻译提示词"><TextT aria-hidden="true" /></button>
-              <button type="button" className="composer-utility" aria-label="提示词调节"><Sparkle weight="fill" aria-hidden="true" /></button>
+              <button type="button" className="composer-utility" aria-label="翻译提示词"><Translate aria-hidden="true" /></button>
+              <button type="button" className="composer-utility" aria-label="提示词调节"><SlidersHorizontal aria-hidden="true" /></button>
             </div>
             <div className="composer-submit-group">
-              <span className={`composer-state ${node.statusMeta.tone}`} title={node.statusMeta.label}><StatusIcon status={node.status} /></span>
+              <span className="composer-cost" aria-label="本次生成消耗 12 点"><Lightning weight="fill" aria-hidden="true" /><span>12</span></span>
               <button
                 className="composer-submit"
                 type="submit"
@@ -320,8 +352,7 @@ function CanvasHandle({ id, type, position, label }) {
   );
 }
 
-function NodeQuickActions({ kind, node, className = "", style }) {
-  const [openMenu, setOpenMenu] = useState(null);
+function NodeQuickActions({ kind, node, className = "", style, openMenu = null, onOpenMenuChange, onActiveActionChange }) {
   if (kind !== "image" && kind !== "video") return null;
   const actionMenus = {
     高清: {
@@ -353,6 +384,17 @@ function NodeQuickActions({ kind, node, className = "", style }) {
         { label: "画面推演 - 5秒前", icon: FilmSlate },
       ],
     },
+    宫格切分: {
+      label: "宫格切分选项",
+      variant: "split",
+      items: [
+        { label: "4宫格 (2×2)" },
+        { label: "9宫格 (3×3)" },
+        { label: "16宫格 (4×4)" },
+        { label: "25宫格 (5×5)" },
+        { label: "自定义", separatorBefore: true },
+      ],
+    },
   };
   const portraitMenu = {
     label: "人像调节选项",
@@ -369,20 +411,20 @@ function NodeQuickActions({ kind, node, className = "", style }) {
   };
   const actions = kind === "image"
     ? [
-      { label: "全景", icon: CornersOut, tooltip: "基于当前场景创建720°全景图" },
-      { label: "多角度", icon: Crosshair, tooltip: "多角度" },
-      { label: "打光", icon: Sparkle, tooltip: "打光" },
-      { label: "九宫格", icon: GridFour, caret: true, tooltip: "九宫格布局" },
+      { label: "全景", icon: Panorama, tooltip: "基于当前场景创建720°全景图" },
+      { label: "多角度", icon: Atom, tooltip: "多角度" },
+      { label: "打光", icon: SunHorizon, tooltip: "打光" },
+      { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
       { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
-      { label: "宫格切分", icon: GridFour, caret: true, tooltip: "宫格切分" },
+      { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
     ]
     : [
       { label: "运动", icon: Sparkle, tooltip: "运动控制" },
-      { label: "多角度", icon: Crosshair, tooltip: "多角度" },
-      { label: "打光", icon: Sparkle, tooltip: "打光" },
-      { label: "九宫格", icon: GridFour, caret: true, tooltip: "九宫格布局" },
+      { label: "多角度", icon: Atom, tooltip: "多角度" },
+      { label: "打光", icon: SunHorizon, tooltip: "打光" },
+      { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
       { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
-      { label: "宫格切分", icon: GridFour, caret: true, tooltip: "宫格切分" },
+      { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
     ];
 
   const renderAction = ({ label, icon: Icon, caret, tooltip }) => {
@@ -399,7 +441,8 @@ function NodeQuickActions({ kind, node, className = "", style }) {
         data-tooltip={menu ? undefined : tooltip ?? label}
         onClick={(event) => {
           event.stopPropagation();
-          if (menu) setOpenMenu((current) => current === label ? null : label);
+          if (!menu) onActiveActionChange?.(label);
+          onOpenMenuChange?.(menu ? (menuOpen ? null : label) : null);
           releasePointerFocus(event);
         }}
       >
@@ -414,23 +457,26 @@ function NodeQuickActions({ kind, node, className = "", style }) {
       <span className="quick-action-menu-anchor" key={label}>
         {button}
         {menuOpen ? (
-          <span className={`quick-action-submenu quick-action-submenu-${menu.variant}`} role="menu" aria-label={menu.label}>
-            <span className="quick-action-submenu-inner">
-              {items.map(({ label: item, icon: ItemIcon }, index) => (
-                <button
-                  key={item}
-                  className={menu.variant === "compact" && index === 0 ? "active" : ""}
-                  type="button"
-                  role="menuitem"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setOpenMenu(null);
-                    releasePointerFocus(event);
-                  }}
-                >
-                  <ItemIcon weight="regular" aria-hidden="true" />
-                  <span>{item}</span>
-                </button>
+          <span className={`quick-action-submenu quick-action-submenu-${menu.variant}`} role="presentation">
+            <span className="quick-action-submenu-inner" role="menu" aria-label={menu.label}>
+              {items.map(({ label: item, icon: ItemIcon, separatorBefore }, index) => (
+                <Fragment key={item}>
+                  {separatorBefore ? <span className="quick-action-menu-separator" role="separator" /> : null}
+                  <button
+                    className={menu.variant === "compact" && index === 0 ? "active" : ""}
+                    type="button"
+                    role="menuitem"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onActiveActionChange?.(label);
+                      onOpenMenuChange?.(null);
+                      releasePointerFocus(event);
+                    }}
+                  >
+                    {ItemIcon ? <ItemIcon weight="regular" aria-hidden="true" /> : null}
+                    <span>{item}</span>
+                  </button>
+                </Fragment>
               ))}
             </span>
           </span>
@@ -457,18 +503,19 @@ function NodeQuickActions({ kind, node, className = "", style }) {
           aria-haspopup="menu"
           onClick={(event) => {
             event.stopPropagation();
-            setOpenMenu((current) => current === "portrait" ? null : "portrait");
+            onActiveActionChange?.("portrait");
+            onOpenMenuChange?.(portraitMenuOpen ? null : "portrait");
             releasePointerFocus(event);
           }}
         >
-          <UserCircle weight="regular" aria-hidden="true" />
+          <User weight="regular" aria-hidden="true" />
           <span>人像质感调节</span>
           <em>NEW</em>
           <CaretRight className="quick-caret" weight="bold" aria-hidden="true" />
         </button>
         {portraitMenuOpen ? (
-          <span className={`quick-action-submenu quick-action-submenu-${portraitMenu.variant}`} role="menu" aria-label={portraitMenu.label}>
-            <span className="quick-action-submenu-inner">
+          <span className={`quick-action-submenu quick-action-submenu-${portraitMenu.variant}`} role="presentation">
+            <span className="quick-action-submenu-inner" role="menu" aria-label={portraitMenu.label}>
               {portraitMenu.items.map(({ label, icon: ItemIcon }) => (
                 <button
                   key={label}
@@ -476,7 +523,8 @@ function NodeQuickActions({ kind, node, className = "", style }) {
                   role="menuitem"
                   onClick={(event) => {
                     event.stopPropagation();
-                    setOpenMenu(null);
+                    onActiveActionChange?.("portrait");
+                    onOpenMenuChange?.(null);
                     releasePointerFocus(event);
                   }}
                 >
@@ -498,21 +546,30 @@ function NodeQuickActions({ kind, node, className = "", style }) {
       {renderAction(actions[4])}
       {renderAction(actions[5])}
       <span className="quick-actions-divider" />
-      <button type="button" aria-label="画笔编辑" data-tooltip="画笔编辑"><PaintBrush aria-hidden="true" /></button>
-      <button type="button" aria-label="定位主体" data-tooltip="定位主体"><Crosshair aria-hidden="true" /></button>
+      <button type="button" aria-label="画笔编辑" data-tooltip="画笔编辑"><PaintBrushBroad aria-hidden="true" /></button>
+      <button type="button" aria-label="定位主体" data-tooltip="定位主体"><CrosshairSimple aria-hidden="true" /></button>
       <button type="button" aria-label="下载素材" data-tooltip="下载素材"><DownloadSimple aria-hidden="true" /></button>
       <button type="button" aria-label="打开素材预览" data-tooltip="打开素材预览"><ArrowsOutSimple aria-hidden="true" /></button>
     </div>
   );
 }
 
-function CanvasEdge({ id, sourceX, sourceY, targetX, targetY, className }) {
-  const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
-  const active = className?.includes("active");
+function CanvasEdge({ id, sourceX, sourceY, targetX, targetY, className, data }) {
+  const [edgePath] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition: Position.Right,
+    targetX,
+    targetY,
+    targetPosition: Position.Left,
+  });
+  const active = Boolean(data?.active);
   return (
     <>
       <BaseEdge id={id} path={edgePath} className={className} />
-      {active ? <path className="canvas-edge-pulse" d={edgePath} aria-hidden="true" /> : null}
+      {active ? [0, 1, 2].map((index) => (
+        <path key={index} className="canvas-edge-flow" data-flow-index={index} d={edgePath} pathLength="100" aria-hidden="true" />
+      )) : null}
     </>
   );
 }
@@ -527,10 +584,12 @@ function CanvasNode({ data, selected }) {
     onOpenPreview,
     onFocusNode,
     onUpdatePrompt,
+    quickActionMode,
   } = data;
   const kind = getSurfaceKind(node);
   const isShot = node.kind === "shot";
   const requirements = node.spec.requirements ?? {};
+  const operationNode = node.kind === "composition" && kind === "image";
   const resolutionLabel = kind === "image" && requirements.width && requirements.height
     ? `${requirements.width} × ${requirements.height}`
     : requirements.aspectRatio ?? "16:9";
@@ -567,7 +626,8 @@ function CanvasNode({ data, selected }) {
         <div className="node-label" aria-hidden="true">
           <NodeLabelIcon kind={kind} />
           <span>{node.title}</span>
-          {kind === "image" || kind === "video" ? <small>{resolutionLabel}</small> : null}
+          {kind === "text" ? <span className="node-label-info" title="输入已更新"><Info weight="regular" aria-hidden="true" /></span> : null}
+          {(kind === "image" || kind === "video") && !operationNode ? <small>{resolutionLabel}</small> : null}
         </div>
 
         <div
@@ -576,6 +636,11 @@ function CanvasNode({ data, selected }) {
           tabIndex="0"
           aria-pressed={selected}
           aria-label={`${node.title}，${node.statusMeta.label}`}
+          onPointerDown={(event) => {
+            if (!event.pointerType) return;
+            const frame = event.currentTarget;
+            window.requestAnimationFrame(() => frame.blur());
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -586,7 +651,7 @@ function CanvasNode({ data, selected }) {
           <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
         </div>
 
-        {selected ? <NodeComposer node={node} kind={kind} graph={graph} onUpdatePrompt={onUpdatePrompt} /> : null}
+        {selected ? <NodeComposer node={node} kind={kind} graph={graph} onUpdatePrompt={onUpdatePrompt} quickActionMode={quickActionMode} /> : null}
       </div>
     </article>
   );
@@ -908,6 +973,11 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
     releasePointerFocus(event);
   };
   const closePanel = () => setOpenPanel(null);
+  const chooseTool = (nextTool, event) => {
+    onToolChange(nextTool);
+    setOpenPanel(null);
+    releasePointerFocus(event);
+  };
 
   useEffect(() => {
     const closeOnEscape = (event) => {
@@ -930,10 +1000,29 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
       {openPanel === "history" ? <HistoryModal draft={draft} onClose={closePanel} onSelectNode={onSelectNode} /> : null}
       <div className="canvas-dock" role="toolbar" aria-label="画布工具" data-canvas-control>
         <button className={`dock-add ${menuOpen ? "active" : ""}`} type="button" onClick={(event) => { setOpenPanel(null); setMenuOpen((value) => !value); releasePointerFocus(event); }} aria-expanded={menuOpen} aria-label={menuOpen ? "关闭添加菜单" : "添加节点"} data-tooltip={menuOpen ? "关闭添加菜单" : "添加节点"}>{menuOpen ? <X weight="bold" aria-hidden="true" /> : <Plus weight="bold" aria-hidden="true" />}</button>
-        <button className={tool === "pan" ? "active" : ""} type="button" onClick={(event) => { onToolChange(tool === "pan" ? "select" : "pan"); releasePointerFocus(event); }} aria-pressed={tool === "pan"} aria-label="移动" data-tooltip={tool === "pan" ? "切换到选择模式 (V)" : "移动画布 (H)"}><Cursor weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><GitBranch weight="regular" aria-hidden="true" /></button>
+        <span className="dock-tool-anchor">
+          <button
+            className={openPanel === "move" ? "active" : ""}
+            type="button"
+            onClick={(event) => togglePanel("move", event)}
+            aria-expanded={openPanel === "move"}
+            aria-haspopup="menu"
+            aria-pressed={tool === "pan"}
+            aria-label="移动"
+            data-tooltip={openPanel === "move" ? undefined : "移动工具"}
+          >
+            {tool === "pan" ? <Hand weight="regular" aria-hidden="true" /> : <Cursor weight="regular" aria-hidden="true" />}
+          </button>
+          {openPanel === "move" ? (
+            <span className="dock-tool-menu" role="menu" aria-label="移动工具">
+              <button className={tool === "select" ? "active" : ""} type="button" role="menuitem" onClick={(event) => chooseTool("select", event)}><Cursor weight="regular" aria-hidden="true" /><span>移动</span><kbd>V</kbd></button>
+              <button className={tool === "pan" ? "active" : ""} type="button" role="menuitem" onClick={(event) => chooseTool("pan", event)}><Hand weight="regular" aria-hidden="true" /><span>抓手工具</span><kbd>H</kbd></button>
+            </span>
+          ) : null}
+        </span>
+        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><ShareNetwork weight="regular" aria-hidden="true" /></button>
         <button className={openPanel === "library" ? "active" : ""} type="button" onClick={(event) => togglePanel("library", event)} aria-label="素材库" data-tooltip="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "roles" ? "active" : ""} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><UsersThree weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "roles" ? "active" : ""} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><Binoculars weight="regular" aria-hidden="true" /></button>
         <button className={openPanel === "history" ? "active" : ""} type="button" onClick={(event) => togglePanel("history", event)} aria-label="历史记录" data-tooltip="历史记录"><Clock weight="regular" aria-hidden="true" /></button>
         <span className="dock-divider" />
         <button className={openPanel === "shortcuts" ? "active" : ""} type="button" onClick={(event) => togglePanel("shortcuts", event)} aria-label="快捷键" data-tooltip="快捷键"><Keyboard weight="regular" aria-hidden="true" /></button>
@@ -1055,11 +1144,11 @@ function CanvasAside({ draft, onSelectNode, assetManagerOpen, onAssetManagerChan
       {!assetManagerOpen ? (
         <>
           <div className="canvas-aside" data-canvas-control>
-            <button className="asset-manage-button" type="button" onClick={(event) => { onAssetManagerChange(true); releasePointerFocus(event); }} aria-label="资产管理" title="资产管理"><Stack weight="regular" aria-hidden="true" /><span>资产管理</span></button>
+            <button className="asset-manage-button" type="button" onClick={(event) => { onAssetManagerChange(true); releasePointerFocus(event); }} aria-label="资产管理" title="资产管理"><SidebarSimple weight="regular" aria-hidden="true" /><span>资产管理</span></button>
             <button type="button" onClick={(event) => { onArrange(); releasePointerFocus(event); }} aria-label="整理画布，Alt+Shift+F" data-tooltip="整理画布Alt+Shift+F"><GridFour weight="regular" aria-hidden="true" /></button>
-            <button className={showMinimap ? "active" : ""} type="button" onClick={(event) => { onToggleMinimap(); releasePointerFocus(event); }} aria-pressed={showMinimap} aria-label="切换小地图" data-tooltip="切换小地图"><MapTrifold weight="regular" aria-hidden="true" /></button>
-            <button className={!showEdges ? "active" : ""} type="button" onClick={(event) => { onToggleEdges(); releasePointerFocus(event); }} aria-pressed={!showEdges} aria-label="隐藏节点连线" data-tooltip="隐藏节点连线"><BezierCurve weight="regular" aria-hidden="true" /></button>
-            <button className={snapToGrid ? "active" : ""} type="button" onClick={(event) => { onToggleSnap(); releasePointerFocus(event); }} aria-pressed={snapToGrid} aria-label="网格吸附" data-tooltip="网格吸附"><Magnet weight="regular" aria-hidden="true" /></button>
+            <button className={showMinimap ? "active" : ""} type="button" onClick={(event) => { onToggleMinimap(); releasePointerFocus(event); }} aria-pressed={showMinimap} aria-label="切换小地图" data-tooltip="切换小地图"><MapPinArea weight="regular" aria-hidden="true" /></button>
+            <button className={!showEdges ? "active" : ""} type="button" onClick={(event) => { onToggleEdges(); releasePointerFocus(event); }} aria-pressed={!showEdges} aria-label="隐藏节点连线" data-tooltip="隐藏节点连线"><FlowArrow weight="regular" aria-hidden="true" /></button>
+            <button className={snapToGrid ? "active" : ""} type="button" onClick={(event) => { onToggleSnap(); releasePointerFocus(event); }} aria-pressed={snapToGrid} aria-label="网格吸附" data-tooltip="网格吸附"><LinkSimple weight="regular" aria-hidden="true" /></button>
             <button className="zoom-value" type="button" onClick={(event) => { setZoomOpen((value) => !value); releasePointerFocus(event); }} aria-expanded={zoomOpen} aria-label="缩放选项" data-tooltip="缩放选项">{Math.round(zoom * 100)}%</button>
           </div>
           <ZoomOptions open={zoomOpen} zoom={zoom} onClose={() => setZoomOpen(false)} onFit={onFit} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onSetZoom={onSetZoom} />
@@ -1094,6 +1183,8 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const [zoom, setZoom] = useState(DEFAULT_CANVAS_ZOOM);
   const [assetManagerOpen, setAssetManagerOpen] = useState(false);
   const [quickActionsPosition, setQuickActionsPosition] = useState(null);
+  const [quickActionMenu, setQuickActionMenu] = useState(null);
+  const [quickActionModes, setQuickActionModes] = useState({});
   const initialViewport = useMemo(() => ({
     // Preserve the reference's fixed world origin at narrow widths. The
     // canvas does not auto-fit its authored layout when the window shrinks.
@@ -1103,8 +1194,13 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   }), []);
 
   const focusNode = useCallback((nodeId) => onSelectNode(nodeId), [onSelectNode]);
+  const quickActionMode = selectedNodeId ? quickActionModes[selectedNodeId] ?? null : null;
+  const setSelectedQuickActionMode = useCallback((mode) => {
+    if (!selectedNodeId) return;
+    setQuickActionModes((current) => ({ ...current, [selectedNodeId]: mode }));
+  }, [selectedNodeId]);
 
-  const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, graph: draft }), [draft, focusNode, onOpenPreview, onUpdatePrompt]);
+  const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, graph: draft, quickActionMode }), [draft, focusNode, onOpenPreview, onUpdatePrompt, quickActionMode]);
   const projectedNodes = useMemo(
     () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE),
     [draft, nodeData, selectedNodeId],
@@ -1146,6 +1242,10 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   useEffect(() => {
     setNodes(projectedNodes);
   }, [projectedNodes, setNodes]);
+
+  useEffect(() => {
+    setQuickActionMenu(null);
+  }, [selectedNodeId]);
 
   useEffect(() => {
     onAssetManagerChange?.(assetManagerOpen);
@@ -1243,6 +1343,9 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
           className="node-quick-actions-overlay"
           kind={selectedNodeKind}
           node={selectedNode}
+          openMenu={quickActionMenu}
+          onOpenMenuChange={setQuickActionMenu}
+          onActiveActionChange={setSelectedQuickActionMode}
           style={{ "--quick-actions-left": `${quickActionsPosition.left}px`, "--quick-actions-top": `${quickActionsPosition.top}px` }}
         />
       ) : null}

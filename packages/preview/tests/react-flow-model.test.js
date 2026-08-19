@@ -6,6 +6,7 @@ import {
   getNodeSize,
   NODE_HEIGHT,
   NODE_WIDTH,
+  PANORAMA_NODE_WIDTH,
   TEXT_NODE_HEIGHT,
   TEXT_NODE_WIDTH,
 } from "../src/project-document.js";
@@ -55,6 +56,23 @@ describe("React Flow projection", () => {
     });
   });
 
+  it("animates edges connected to the selection and active execution flow", () => {
+    const draft = activeDraft();
+    const edge = draft.edges[0];
+    const selectedEdges = toFlowEdges(draft, edge.sourceNodeId);
+    expect(selectedEdges.find((item) => item.id === edge.id).className).toContain("active");
+    expect(selectedEdges.find((item) => item.id === edge.id).data.active).toBe(true);
+
+    const unrelatedNode = draft.nodes.find((node) => node.id !== edge.sourceNodeId && node.id !== edge.targetNodeId);
+    expect(toFlowEdges(draft, unrelatedNode.id).find((item) => item.id === edge.id).className).not.toContain("active");
+
+    const runningDraft = {
+      ...draft,
+      nodes: draft.nodes.map((node) => node.id === edge.targetNodeId ? { ...node, status: "running" } : node),
+    };
+    expect(toFlowEdges(runningDraft).find((item) => item.id === edge.id).className).toContain("active");
+  });
+
   it("uses wide media cards and square text cards without changing graph semantics", () => {
     expect(getNodeSize({ kind: "shot", spec: { mediaKind: "image" } })).toMatchObject({
       width: NODE_WIDTH,
@@ -65,6 +83,21 @@ describe("React Flow projection", () => {
       width: TEXT_NODE_WIDTH,
       height: TEXT_NODE_HEIGHT,
       shape: "square",
+    });
+    expect(getNodeSize({ title: "高清", kind: "composition", spec: { role: "composition", mediaType: "image/png" } })).toMatchObject({
+      width: TEXT_NODE_WIDTH,
+      height: NODE_HEIGHT,
+      shape: "square",
+    });
+    expect(getNodeSize({ title: "720°全景图", kind: "composition", spec: { role: "composition", mediaType: "image/png" } })).toMatchObject({
+      width: PANORAMA_NODE_WIDTH,
+      height: NODE_HEIGHT,
+      shape: "panorama",
+    });
+    expect(getNodeSize({ title: "角色脸部三视图", kind: "composition", spec: { role: "composition", mediaType: "image/png" } })).toMatchObject({
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      shape: "wide",
     });
   });
 
