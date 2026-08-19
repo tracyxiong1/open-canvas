@@ -18,7 +18,7 @@ The product keeps independent project labels, iconography, and an original gener
 
 ## Findings
 
-The current pass clears the source-verified visual mismatches in the selected-node, nine-node topology, selection-driven edge flow, dock-overlay, shortcut-sheet, toolbox, zoom, add-menu, and contextual-menu states. It remains blocked on command execution rather than visual geometry: the non-destructive contextual menus now open and dismiss, but their generation/edit operations are not yet connected to an AI provider/job pipeline.
+The current pass closes the newly re-audited default/hover/selected connector states, selected-node toolbar icon semantics, modal stacking, and asset-sidebar focus behavior in addition to the earlier selected-node, nine-node topology, edge-flow, dock-overlay, shortcut-sheet, toolbox, zoom, add-menu, and contextual-menu work. Visual QA remains open for continued state-by-state review, and end-to-end completion is still blocked on command execution: the non-destructive contextual menus now open and dismiss, but their generation/edit operations are not yet connected to an AI provider/job pipeline.
 
 - [P1] Contextual image commands do not yet execute a generation or editing job
   - **Location:** selected image node → **高清** / **九宫格** contextual menus.
@@ -51,9 +51,12 @@ The current pass clears the source-verified visual mismatches in the selected-no
 
 - Dragged the completed image node in the browser: the node moved and its selected quick bar followed by the same delta; the browser was then restored to the baseline fixture state.
 - Clicked the image node: it selected the node and exposed the matching contextual toolbar and prompt composer.
+- Rechecked the idle, hovered, and selected connector states: connector glyphs are hidden at rest, appear on node hover or selection, and retain their inward hover motion without changing the media-card border.
 - Opened and closed **资产管理**; the generated image appears as a focusable asset entry.
+- Selected the off-screen text node from **资产管理**: the sidebar stayed open, its semantic node order and active-row actions matched the reference, and the node was centered in the remaining canvas at 100% zoom.
 - Opened **添加节点** and created a **文本** node; the menu closed and the graph gained the new editable node.
 - Opened and closed the toolbox, library, role library, history, shortcut sheet, and tutorial surfaces; each has its own responsive geometry and dialog/menu semantics.
+- Verified role/history modal stacking after selecting an image: the modal backdrop and panel now cover the node toolbar instead of allowing it to bleed through.
 - Opened and dismissed the selected-node **人像质感调节**, **高清** image-action, and **九宫格** storyboard-preset menus. All preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
 - Opened **宫格切分** and verified its five rows, separator, 150 × 225.25 px inner menu, and persistent node editing mode after switching menus or reselecting the node.
 - Panned across the full operation graph and verified the central image, text node, five compact enhancement nodes, panoramic node, role-view node, and eight fan-out edges against the same live viewport coordinates.
@@ -100,6 +103,10 @@ The current pass clears the source-verified visual mismatches in the selected-no
    - **Fix:** added the complete independently authored nine-node demo topology, measured compact/panorama/wide operation sizes, selection-driven fan-out edge flow, the text-node status marker, and the 12-point generation indicator.
    - **Post-fix result:** `14-comparison-selected-detail.png` and `15-comparison-full-topology.png` verify the selected and full-graph states at the same viewport; node bounds differ only by subpixel rounding.
 
+10. **P1 — default connector visibility, modal stacking, and asset-list focus still diverged in normal use.**
+   - **Fix:** hide connector glyphs until node hover/selection, preserve the neutral card border and cursor on hover, lower the selected-node toolbar beneath modal layers, and implement the reference asset-list behavior: persistent sidebar, semantic ordering, active-row actions, 100% zoom, and centering within the remaining canvas.
+   - **Post-fix result:** `21-comparison-default-after.png`, `30-local-role-z-fixed.png`, `35-comparison-asset-focus-text.png`, and `39-comparison-selected-menu-final.png` cover the corrected default, modal, asset-focus, and selected-menu states.
+
 ## Implementation checklist
 
 - [x] Source and implementation captured in the same selected-node canvas state at 716 × 994 CSS px and 1× density.
@@ -107,6 +114,7 @@ The current pass clears the source-verified visual mismatches in the selected-no
 - [x] Default fixture validates through the canonical canvas schema and fingerprint checks.
 - [x] Browser-level drag, selection, asset management, node creation, role filtering, history, and dock-surface flows exercised.
 - [x] Revised shortcut sheet, toolbox, zoom, add menu, connector, and contextual menus re-captured at 716 × 994 and compared side by side.
+- [x] Re-captured idle connector, selected toolbar, modal layering, and asset-sidebar focus states at 716 × 994 after the interaction refinement.
 - [x] `npm test --workspace @open-canvas/preview` passed: 21 tests.
 - [x] `npm run check` and `npm run build --workspace @open-canvas/preview` passed after the current connector/menu refinement.
 - [ ] Bind contextual menu selections to the provider-neutral job pipeline, then repeat an end-to-end generated-asset state review.
