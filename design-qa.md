@@ -54,7 +54,7 @@ The current pass clears the source-verified visual mismatches in the selected-no
 - Opened and closed **资产管理**; the generated image appears as a focusable asset entry.
 - Opened **添加节点** and created a **文本** node; the menu closed and the graph gained the new editable node.
 - Opened and closed the toolbox, library, role library, history, shortcut sheet, and tutorial surfaces; each has its own responsive geometry and dialog/menu semantics.
-- Opened and dismissed the selected-node **高清** image-action menu and **九宫格** storyboard-preset menu. Both preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
+- Opened and dismissed the selected-node **人像质感调节**, **高清** image-action, and **九宫格** storyboard-preset menus. All preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
 - Toggled the role-library “recent” checkbox; it updated without dismissing the dialog.
 - Rechecked the history modal’s panel, navigation, date, thumbnail, and empty-state bounds in the same 716 × 994 viewport.
 - Verified edge, minimap, snap, zoom, pan, asset-manager, add-menu, prompt, and dock-surface flows in the preview test suite.
@@ -86,8 +86,8 @@ The current pass clears the source-verified visual mismatches in the selected-no
    - **Post-fix result:** `118-reference-local-shortcuts-comparison.png` confirms the quick bar remains above the sheet while the node body stays correctly behind it.
 
 7. **P1 — selected-node menus and connector internals looked static or optically wrong.**
-   - **Fix:** moved the selected quick bar into a high-layer portal, added the measured **高清** and **九宫格** submenus, removed pointer-only focus rings, and reduced the connection-plus glyph to the measured 3.5 px displayed size while preserving its 40 px hit target and hover position.
-   - **Post-fix result:** `150-reference-local-selected-handle-final.png`, `155-reference-local-hd-menu-icons-comparison.png`, and `158-reference-local-nine-grid-menu-comparison.png` show matching anchors, menu density, connector geometry, and active states apart from intentional independent artwork and icon silhouettes.
+   - **Fix:** moved the selected quick bar into a high-layer portal, added the measured **人像质感调节**, **高清**, and **九宫格** submenus, removed pointer-only focus rings, and reduced the connection-plus glyph to the measured 3.5 px displayed size while preserving its 40 px hit target and hover position.
+   - **Post-fix result:** `150-reference-local-selected-handle-final.png`, `155-reference-local-hd-menu-icons-comparison.png`, `158-reference-local-nine-grid-menu-comparison.png`, and `163-reference-local-portrait-menu-comparison.png` show matching anchors, menu density, connector geometry, and active states apart from intentional independent artwork and icon silhouettes.
 
 ## Implementation checklist
 
