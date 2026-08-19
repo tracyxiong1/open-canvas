@@ -98,7 +98,7 @@ describe("editable open canvas", () => {
 
     await user.click(screen.getByRole("button", { name: "缩放选项" }));
     expect(screen.getByRole("menu", { name: "缩放选项" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "适合画布" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "适合屏幕" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "资产管理" }));
     expect(screen.getByRole("dialog", { name: "资产管理" })).toBeInTheDocument();
@@ -116,6 +116,24 @@ describe("editable open canvas", () => {
     await user.click(screen.getByRole("menuitem", { name: "视频" }));
     expect(await screen.findByRole("button", { name: /视频 4，待生成/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("未保存")).toBeInTheDocument();
+  });
+
+  it("opens and dismisses the selected image node's contextual editing menu", async () => {
+    const user = userEvent.setup();
+    render(<App initialDocument={exampleDocument} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ }));
+    const quickActions = screen.getByLabelText(/快捷配置$/);
+    await user.click(within(quickActions).getByRole("button", { name: "高清" }));
+
+    const menu = screen.getByRole("menu", { name: "图像快捷操作" });
+    expect(within(menu).getByRole("menuitem", { name: "扩图" })).toBeInTheDocument();
+    await user.click(within(menu).getByRole("menuitem", { name: "扩图" }));
+    expect(screen.queryByRole("menu", { name: "图像快捷操作" })).not.toBeInTheDocument();
+
+    await user.click(within(quickActions).getByRole("button", { name: "九宫格" }));
+    const gridMenu = screen.getByRole("menu", { name: "分镜布局预设" });
+    expect(within(gridMenu).getByRole("menuitem", { name: "多机位九宫格" })).toBeInTheDocument();
   });
 
   it("offers the full creative-node palette and persists context nodes", async () => {

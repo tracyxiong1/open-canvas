@@ -18,7 +18,13 @@ The product keeps independent project labels, iconography, and an original gener
 
 ## Findings
 
-The final pass covers the default, selected, menu, sidebar, and dock-overlay states. No P0, P1, or P2 findings remain after the final browser and build rerun. The closeout below records only intentional product-identity differences.
+The current pass clears the source-verified visual mismatches in the selected-node, dock-overlay, shortcut-sheet, toolbox, zoom, add-menu, and contextual-menu states. It remains blocked on command execution rather than visual geometry: the non-destructive contextual menus now open and dismiss, but their generation/edit operations are not yet connected to an AI provider/job pipeline.
+
+- [P1] Contextual image commands do not yet execute a generation or editing job
+  - **Location:** selected image node → **高清** / **九宫格** contextual menus.
+  - **Evidence:** the source/local comparisons `151-reference-hd-menu-pressed.png` / `154-local-hd-menu-icons-final.png` and `156-reference-nine-grid-menu-pressed.png` / `157-local-nine-grid-menu-final.png` verify the menus' visual geometry and interactive open/close state. The implementation currently dismisses an item selection without dispatching an engine command.
+  - **Impact:** the canvas now presents the correct editing affordance, but transformations such as upscaling, outpainting, and preset storyboards cannot yet run end-to-end.
+  - **Next step:** route menu selections through the shared command core into a provider-neutral generation/edit job envelope, then bind that envelope to the user-supplied API-key runtime.
 
 - [P3] Icon silhouette variance
   - **Location:** compact header, contextual action bar, and lower controls.
@@ -43,11 +49,12 @@ The final pass covers the default, selected, menu, sidebar, and dock-overlay sta
 
 ## Interaction checks
 
-- Dragged the completed image node in the browser: the interface showed `节点位置已更新`, confirming the visible drag writes canonical coordinates.
+- Dragged the completed image node in the browser: the node moved and its selected quick bar followed by the same delta; the browser was then restored to the baseline fixture state.
 - Clicked the image node: it selected the node and exposed the matching contextual toolbar and prompt composer.
 - Opened and closed **资产管理**; the generated image appears as a focusable asset entry.
 - Opened **添加节点** and created a **文本** node; the menu closed and the graph gained the new editable node.
 - Opened and closed the toolbox, library, role library, history, shortcut sheet, and tutorial surfaces; each has its own responsive geometry and dialog/menu semantics.
+- Opened and dismissed the selected-node **高清** image-action menu and **九宫格** storyboard-preset menu. Both preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
 - Toggled the role-library “recent” checkbox; it updated without dismissing the dialog.
 - Rechecked the history modal’s panel, navigation, date, thumbnail, and empty-state bounds in the same 716 × 994 viewport.
 - Verified edge, minimap, snap, zoom, pan, asset-manager, add-menu, prompt, and dock-surface flows in the preview test suite.
@@ -74,17 +81,27 @@ The final pass covers the default, selected, menu, sidebar, and dock-overlay sta
    - **Fix:** moved ports to zero-size anchors with 40 px hit targets, rebuilt their visual affordances, and matched the measured add menu, library, role library, history panel, dot-grid color, dock, and lower-left controls.
    - **Post-fix result:** all final P1/P2 visual findings were rerun in the local browser and cleared.
 
+6. **P1 — narrow shortcut sheet hierarchy and shortcut keycaps drifted from the reference.**
+   - **Fix:** rebuilt the sheet around a 795 px nested scroll region, 14 px labels, 28 px outlined keycaps, explicit `+` separators, inline drag suffixes, and a measured scroll indicator.
+   - **Post-fix result:** `118-reference-local-shortcuts-comparison.png` confirms the quick bar remains above the sheet while the node body stays correctly behind it.
+
+7. **P1 — selected-node menus and connector internals looked static or optically wrong.**
+   - **Fix:** moved the selected quick bar into a high-layer portal, added the measured **高清** and **九宫格** submenus, removed pointer-only focus rings, and reduced the connection-plus glyph to the measured 3.5 px displayed size while preserving its 40 px hit target and hover position.
+   - **Post-fix result:** `150-reference-local-selected-handle-final.png`, `155-reference-local-hd-menu-icons-comparison.png`, and `158-reference-local-nine-grid-menu-comparison.png` show matching anchors, menu density, connector geometry, and active states apart from intentional independent artwork and icon silhouettes.
+
 ## Implementation checklist
 
 - [x] Source and implementation captured in the same selected-node canvas state at 716 × 994 CSS px and 1× density.
 - [x] Full-view and focused side-by-side comparisons reviewed for default, selected, role-library, and history states.
 - [x] Default fixture validates through the canonical canvas schema and fingerprint checks.
 - [x] Browser-level drag, selection, asset management, node creation, role filtering, history, and dock-surface flows exercised.
-- [x] `npm test` passed: core 31, CLI 4, preview 19 tests.
-- [x] `npm run check` and `npm run build --workspace @open-canvas/preview` passed.
+- [x] Revised shortcut sheet, toolbox, zoom, add menu, connector, and contextual menus re-captured at 716 × 994 and compared side by side.
+- [x] `npm test --workspace @open-canvas/preview` passed: 20 tests.
+- [x] `npm run check` and `npm run build --workspace @open-canvas/preview` passed after the current connector/menu refinement.
+- [ ] Bind contextual menu selections to the provider-neutral job pipeline, then repeat an end-to-end generated-asset state review.
 
 ## Follow-up polish
 
 - [P3] Consider code-splitting the preview bundle before a production release; Vite reports the existing 500 kB chunk-size advisory.
 
-final result: passed — P0: 0, P1: 0, P2: 0; intentional P3 identity differences remain documented above.
+final result: blocked
