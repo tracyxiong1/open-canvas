@@ -379,21 +379,15 @@ export function App({ initialDocument = referenceCanvasDemo }) {
     });
   }, [document, draftId, runMutation]);
 
-  const handleArrange = useCallback(() => {
+  const handleArrange = useCallback((positions) => {
     const draft = findCanonicalDraft(document, draftId);
-    if (draft.nodes.length === 0) return;
-    const columns = Math.min(3, Math.max(1, draft.nodes.length));
-    const columnGap = 430;
-    const rowGap = 520;
-    runMutation("已整理画布", (current) => draft.nodes.reduce((next, node, index) => {
+    if (draft.nodes.length === 0 || !positions) return;
+    runMutation("已整理画布", (current) => draft.nodes.reduce((next, node) => {
       const currentDraft = findCanonicalDraft(next, draftId);
       return updateNode(next, {
         draftId,
         nodeId: node.id,
-        position: {
-          x: (index % columns) * columnGap,
-          y: Math.floor(index / columns) * rowGap,
-        },
+        position: positions[node.id] ?? node.position,
         expectedProjectRevision: next.revision,
         expectedDraftRevision: currentDraft.revision,
       });
