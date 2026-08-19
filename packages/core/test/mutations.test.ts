@@ -208,36 +208,36 @@ test("prompt updates reject generated composition nodes instead of committing a 
         expectedDraftRevision: draft.revision,
         prompt: "not applicable",
       }),
-    /shot and text nodes/,
+    /shot and editable context nodes/,
   );
 });
 
-test("text composition nodes persist their editable canvas prompt", () => {
-  const empty = createProject({ title: "Text canvas" });
-  const withText = addNode(empty, {
+test("canvas context nodes persist their editable prompt", () => {
+  const empty = createProject({ title: "Context canvas" });
+  const withContext = addNode(empty, {
     draftId: empty.activeDraftId,
     expectedProjectRevision: empty.revision,
     expectedDraftRevision: empty.drafts[0].revision,
-    title: "Intent",
+    title: "Director",
     spec: {
       kind: "composition",
-      mediaType: "video/mp4",
-      role: "text",
-      prompt: "An uneasy reunion at dusk.",
+      mediaType: "application/json",
+      role: "director",
+      prompt: "Plan an uneasy reunion at dusk.",
     },
   });
-  const draft = withText.drafts[0];
-  const updated = updateNode(withText, {
+  const draft = withContext.drafts[0];
+  const updated = updateNode(withContext, {
     draftId: draft.id,
     nodeId: draft.nodes[0].id,
-    expectedProjectRevision: withText.revision,
+    expectedProjectRevision: withContext.revision,
     expectedDraftRevision: draft.revision,
     prompt: "An uneasy reunion in a rain-soaked station at dusk.",
   });
 
   const node = updated.drafts[0].nodes[0];
   assert.equal(node.spec.kind, "composition");
-  assert.equal(node.spec.role, "text");
+  assert.equal(node.spec.role, "director");
   assert.equal(node.spec.prompt, "An uneasy reunion in a rain-soaked station at dusk.");
   assert.equal(node.specRevision, 2);
   assert.equal(node.execution.status, "dirty");

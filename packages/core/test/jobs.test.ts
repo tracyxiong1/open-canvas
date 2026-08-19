@@ -240,29 +240,29 @@ test("composition generation waits for every dependency output", () => {
   );
 });
 
-test("text nodes remain editable prompt context and never create a generation job", () => {
-  const empty = createProject({ title: "Text context" });
-  const withText = addNode(empty, {
+test("context nodes remain editable prompt context and never create a generation job", () => {
+  const empty = createProject({ title: "Audio context" });
+  const withContext = addNode(empty, {
     draftId: empty.activeDraftId,
     expectedProjectRevision: empty.revision,
     expectedDraftRevision: empty.drafts[0].revision,
-    title: "Intent",
+    title: "Sound design",
     spec: {
       kind: "composition",
-      mediaType: "video/mp4",
-      role: "text",
-      prompt: "A quiet prologue.",
+      mediaType: "audio/mpeg",
+      role: "audio",
+      prompt: "A quiet prologue with a distant train.",
     },
   });
-  const draft = withText.drafts[0];
+  const draft = withContext.drafts[0];
   assert.throws(
-    () => startGeneration(withText, {
+    () => startGeneration(withContext, {
       draftId: draft.id,
       nodeId: draft.nodes[0].id,
-      expectedProjectRevision: withText.revision,
+      expectedProjectRevision: withContext.revision,
       expectedDraftRevision: draft.revision,
     }),
-    /Text nodes are prompts/,
+    /Context nodes are prompts/,
   );
 });
 

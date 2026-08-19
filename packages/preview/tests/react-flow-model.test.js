@@ -46,7 +46,7 @@ describe("React Flow projection", () => {
       type: "default",
     });
     expect(dependency).toMatchObject({
-      sourceHandle: HANDLE_IDS.dependencySource,
+      sourceHandle: HANDLE_IDS.sequenceSource,
       targetHandle: HANDLE_IDS.dependencyTarget,
       type: "default",
     });
@@ -65,7 +65,7 @@ describe("React Flow projection", () => {
 
     expect(connectionToGraphMutation(withoutFirstDependency, {
       source: shots[0].id,
-      sourceHandle: HANDLE_IDS.dependencySource,
+      sourceHandle: HANDLE_IDS.sequenceSource,
       target: composition.id,
       targetHandle: HANDLE_IDS.dependencyTarget,
     })).toEqual({
@@ -76,7 +76,7 @@ describe("React Flow projection", () => {
 
     expect(connectionToGraphMutation(draft, {
       source: shots[0].id,
-      sourceHandle: HANDLE_IDS.dependencySource,
+      sourceHandle: HANDLE_IDS.sequenceSource,
       target: composition.id,
       targetHandle: HANDLE_IDS.dependencyTarget,
     })).toBeNull();

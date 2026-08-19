@@ -22,6 +22,10 @@ describe("editable open canvas", () => {
     expect(screen.getByRole("button", { name: "导出 JSON" })).toBeEnabled();
 
     const selectedNode = await screen.findByRole("button", { name: /Shot 2 — Crossing，待生成/ });
+    expect(selectedNode).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("region", { name: "Shot 2 — Crossing 参数" })).not.toBeInTheDocument();
+
+    fireEvent.click(selectedNode);
     expect(selectedNode).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "Shot 2 — Crossing 参数" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
@@ -82,18 +86,35 @@ describe("editable open canvas", () => {
     await user.click(edgeToggle);
     expect(edgeToggle).toHaveAttribute("aria-pressed", "false");
 
-    const panButton = screen.getByRole("button", { name: "平移画布" });
-    const selectButton = screen.getByRole("button", { name: "选择和移动节点" });
-    await user.click(panButton);
-    expect(panButton).toHaveAttribute("aria-pressed", "true");
-    await user.click(selectButton);
-    expect(selectButton).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "切换到抓手工具" }));
+    const selectTool = screen.getByRole("button", { name: "切换到选择工具" });
+    expect(selectTool).toHaveAttribute("aria-pressed", "true");
+    await user.click(selectTool);
+    expect(screen.getByRole("button", { name: "切换到抓手工具" })).toHaveAttribute("aria-pressed", "false");
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     expect(screen.getByRole("menu", { name: "添加画布节点" })).toBeInTheDocument();
-    await user.click(screen.getByRole("menuitem", { name: /视频/ }));
+    await user.click(screen.getByRole("menuitem", { name: "视频" }));
     expect(await screen.findByRole("button", { name: /视频 4，待生成/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("未保存")).toBeInTheDocument();
+  });
+
+  it("offers the full creative-node palette and persists context nodes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    const menu = screen.getByRole("menu", { name: "添加画布节点" });
+    for (const label of ["文本", "图片", "视频", "编辑", "分镜", "镜头分析", "音频", "脚本", "素材", "上传", "从生成历史中选择"]) {
+      expect(within(menu).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+
+    await user.click(within(menu).getByRole("menuitem", { name: "音频" }));
+    const audioNode = await screen.findByRole("button", { name: /音频 1，待生成/ });
+    expect(audioNode).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
+      "描述配乐、旁白、环境音或声音设计。",
+    );
   });
 
   it("adds a persistent text node with an editable canvas prompt", async () => {

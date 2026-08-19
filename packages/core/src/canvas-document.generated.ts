@@ -9,8 +9,8 @@ export type CompositionSpec = {
   [k: string]: unknown;
 } & {
   kind: "composition";
-  mediaType: "video/mp4";
-  role?: "composition" | "text";
+  mediaType: string;
+  role?: "composition" | "text" | "smart-edit" | "director" | "frame-analysis" | "audio" | "script" | "asset-library";
   prompt?: string;
 };
 export type Execution = {
