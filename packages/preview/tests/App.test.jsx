@@ -102,7 +102,7 @@ describe("editable open canvas", () => {
 
     await user.click(screen.getByRole("button", { name: "资产管理" }));
     expect(screen.getByRole("dialog", { name: "资产管理" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "关闭资产管理" }));
+    await user.click(screen.getByRole("button", { name: "画布" }));
     expect(screen.queryByRole("dialog", { name: "资产管理" })).not.toBeInTheDocument();
 
     const moveTool = within(toolbar).getByRole("button", { name: "移动" });
@@ -124,7 +124,7 @@ describe("editable open canvas", () => {
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const menu = screen.getByRole("menu", { name: "添加画布节点" });
-    for (const label of ["文本", "图片", "视频", "编辑", "分镜", "镜头分析", "音频", "脚本", "素材", "上传", "从生成历史中选择"]) {
+    for (const label of ["文本", "图片", "视频", "智能剪辑", "导演台", "逐帧分析", "音频", "脚本", "素材库", "上传", "从生成历史中选择"]) {
       expect(within(menu).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
 
@@ -134,6 +134,36 @@ describe("editable open canvas", () => {
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
       "描述配乐、旁白、环境音或声音设计。",
     );
+  });
+
+  it("opens and closes each dock surface as its own canvas state", async () => {
+    const user = userEvent.setup();
+    render(<App initialDocument={exampleDocument} />);
+    const toolbar = screen.getByRole("toolbar", { name: "画布工具" });
+
+    await user.click(within(toolbar).getByRole("button", { name: "打开工具箱" }));
+    expect(screen.getByRole("dialog", { name: "我的工具箱" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭工具箱" }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "素材库" }));
+    expect(screen.getByRole("dialog", { name: "素材库" })).toBeInTheDocument();
+    await user.click(within(toolbar).getByRole("button", { name: "素材库" }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "角色库" }));
+    expect(screen.getByRole("dialog", { name: "角色库" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭角色库" }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "历史记录" }));
+    expect(screen.getByRole("dialog", { name: "历史资产" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭历史资产" }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "快捷键" }));
+    expect(screen.getByRole("dialog", { name: "快捷键" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭快捷键" }));
+
+    await user.click(within(toolbar).getByRole("button", { name: "教程" }));
+    expect(screen.getByRole("dialog", { name: "帮助与教程" })).toBeInTheDocument();
+    await user.click(within(toolbar).getByRole("button", { name: "教程" }));
   });
 
   it("adds a persistent text node with an editable canvas prompt", async () => {
