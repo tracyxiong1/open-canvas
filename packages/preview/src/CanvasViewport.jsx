@@ -53,6 +53,7 @@ import {
   Sparkle,
   SpinnerGap,
   Stack,
+  Smiley,
   TextAlignLeft,
   TextT,
   UploadSimple,
@@ -353,6 +354,14 @@ function NodeQuickActions({ kind, node, className = "", style }) {
       ],
     },
   };
+  const portraitMenu = {
+    label: "人像调节选项",
+    variant: "portrait",
+    items: [
+      { label: "人像调节", icon: UserCircle },
+      { label: "情绪调节", icon: Smiley },
+    ],
+  };
   const releasePointerFocus = (event) => {
     if (event.detail === 0) return;
     const button = event.currentTarget;
@@ -430,6 +439,8 @@ function NodeQuickActions({ kind, node, className = "", style }) {
     );
   };
 
+  const portraitMenuOpen = openMenu === "portrait";
+
   return (
     <div
       className={`node-quick-actions nodrag nowheel ${className}`}
@@ -437,12 +448,46 @@ function NodeQuickActions({ kind, node, className = "", style }) {
       aria-label={`${node.title} 快捷配置`}
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <button className="quick-person-action" type="button" aria-label="人像质感调节" data-tooltip="人像质感调节">
-        <UserCircle weight="regular" aria-hidden="true" />
-        <span>人像质感调节</span>
-        <em>NEW</em>
-        <CaretRight className="quick-caret" weight="bold" aria-hidden="true" />
-      </button>
+      <span className="quick-action-menu-anchor">
+        <button
+          className={`quick-person-action${portraitMenuOpen ? " active" : ""}`}
+          type="button"
+          aria-label="人像质感调节"
+          aria-expanded={portraitMenuOpen}
+          aria-haspopup="menu"
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpenMenu((current) => current === "portrait" ? null : "portrait");
+            releasePointerFocus(event);
+          }}
+        >
+          <UserCircle weight="regular" aria-hidden="true" />
+          <span>人像质感调节</span>
+          <em>NEW</em>
+          <CaretRight className="quick-caret" weight="bold" aria-hidden="true" />
+        </button>
+        {portraitMenuOpen ? (
+          <span className={`quick-action-submenu quick-action-submenu-${portraitMenu.variant}`} role="menu" aria-label={portraitMenu.label}>
+            <span className="quick-action-submenu-inner">
+              {portraitMenu.items.map(({ label, icon: ItemIcon }) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenMenu(null);
+                    releasePointerFocus(event);
+                  }}
+                >
+                  <ItemIcon weight="regular" aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </span>
+          </span>
+        ) : null}
+      </span>
       {renderAction(actions[0])}
       <div className="quick-action-group">
         {renderAction(actions[1])}

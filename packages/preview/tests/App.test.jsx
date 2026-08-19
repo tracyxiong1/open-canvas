@@ -134,6 +134,10 @@ describe("editable open canvas", () => {
     await user.click(within(quickActions).getByRole("button", { name: "九宫格" }));
     const gridMenu = screen.getByRole("menu", { name: "分镜布局预设" });
     expect(within(gridMenu).getByRole("menuitem", { name: "多机位九宫格" })).toBeInTheDocument();
+
+    await user.click(within(quickActions).getByRole("button", { name: "人像质感调节" }));
+    const portraitMenu = screen.getByRole("menu", { name: "人像调节选项" });
+    expect(within(portraitMenu).getByRole("menuitem", { name: "情绪调节" })).toBeInTheDocument();
   });
 
   it("offers the full creative-node palette and persists context nodes", async () => {
