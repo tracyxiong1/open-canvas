@@ -1,58 +1,58 @@
-# JIM-7 Design QA
+# Open Canvas visual fidelity QA — 2026-08-19
+
+**Comparison target**
+
+- Source visual truth (temporary, intentionally untracked capture): `/tmp/open-canvas-qa-20260819/reference-current.jpg`.
+- Browser-rendered implementation: `/tmp/open-canvas-qa-20260819/implementation-current-panned-final.jpg`.
+- Full-view, side-by-side comparison: `/tmp/open-canvas-qa-20260819/comparison-current-panned-final.jpg`.
+- Focused node/grid comparison: `/tmp/open-canvas-qa-20260819/comparison-grid-crop.jpg` and `/tmp/open-canvas-qa-20260819/comparison-text-selected-final.jpg`.
+- Normalization: both full-view captures are 778 × 994 px at a 778 × 994 CSS-px viewport. The browser was running at device scale factor 2; the capture transport normalized both images to 1× before comparison. Both canvases were unselected and panned to put their first three nodes on the same baseline. The source zoom was 36.67%; the implementation zoom was 36%.
+
+The comparison is about the visible canvas grammar rather than project identity or fixture content. The implementation deliberately uses its own project title, copy, icons, and local fixture media; it does not include source branding, source assets, or source-specific product data.
 
 **Findings**
 
-- 未发现仍需处理的 P0、P1 或 P2 差异。实现保留了参考证据中的固定控制层、点阵画布、同坐标系节点/参数/连线、选中端口、移动端横向画布语义和素材直观预览，同时使用 Open Canvas 自有领域结构、文案、图标和原创素材。
-
-**Comparison Artifacts**
-
-- Source visual truth: `docs/references/libtv/desktop-1440x900-video-parameters.png`, `docs/references/libtv/desktop-1440x900-job-complete.png`, `docs/references/libtv/mobile-390x844-video-selected.png` and the interaction constraints in `docs/references/libtv/README.md`.
-- Browser-rendered implementation: `docs/qa/jim-7/desktop-night-selected.png`, `docs/qa/jim-7/desktop-main-overview.png`, `docs/qa/jim-7/desktop-asset-preview.png`, `docs/qa/jim-7/mobile-night-selected.png`, `docs/qa/jim-7/mobile-main-fit.png`.
-- Combined comparison inputs: `docs/qa/jim-7/compare-desktop-selected.png`, `docs/qa/jim-7/compare-desktop-generated.png`, `docs/qa/jim-7/compare-mobile-selected.png`.
-- Desktop normalization: source and implementation are both 1440 × 900 px at a 1440 × 900 CSS viewport; effective density is 1:1.
-- Mobile normalization: source and implementation are both 390 × 844 px at a 390 × 844 CSS viewport; effective density is 1:1.
-- States: desktop night variation with a dirty shot selected and parameters expanded; desktop main draft with four succeeded nodes and dependency graph; expanded generated-asset preview; mobile dirty shot selected; mobile main draft fit to screen.
-
-**Full-view Comparison Evidence**
-
-- Desktop selected-state comparison confirms that the node, ports, parameter panel and edges move in one transformed layer while the header, legend, tool dock, zoom dock and read-only notice stay fixed.
-- Desktop generated-state comparison confirms clear succeeded badges, in-node 16:9 imagery, sequence/dependency separation and the composition result. The denser four-node layout is intentional product data, not source-design drift.
-- Mobile comparison confirms the same canvas coordinate system is retained rather than reflowed into a page; the selected node and parameter panel are reachable, fixed controls remain visible, and fit-to-screen provides a complete overview.
-
-**Focused Region Comparison Evidence**
-
-- Node headers, status badges, ports, prompt field, parameter grid and routing/fingerprint footer were readable in the selected-state combined inputs; no additional crop was needed.
-- Generated images were checked both in-node and in the expanded 16:9 preview. Crops remain sharp and proportional, with no protected reference asset reuse.
-- The partial pink circle at the right edge of Chrome captures and the console errors whose URLs begin with `chrome-extension://` come from installed browser extensions; neither is present in the app DOM or source bundle and both were excluded from implementation findings.
+- No actionable P0, P1, or P2 fidelity issues remain in the captured canvas state.
+- The final compact top chrome was also checked in the running browser after the visual iterations: at a 1280 × 720 viewport, the left canvas control, right helper controls, bottom dock, asset controls, and zoom controls remain fixed while the React Flow world pans beneath them. This is a DOM/layout check for the final small chrome adjustment; the full-view visual comparison remains the evidence for canvas, nodes, edges, grid, and dock surfaces.
 
 **Required Fidelity Surfaces**
 
-- Fonts and typography: system/Inter fallbacks produce a restrained UI hierarchy; headings, metadata and monospaced identifiers remain distinguishable at desktop and mobile scales without broken wrapping.
-- Spacing and layout rhythm: node widths, compact panels, dotted canvas, fixed docks and mobile overflow behavior track the approved evidence. Radii and borders are consistently tokenized.
-- Colors and visual tokens: neutral near-black surfaces, quiet borders, cyan selection/dependency accents and semantic green/amber/purple/red states maintain contrast without borrowing source branding.
-- Image quality and asset fidelity: all visible stills are original generated WebP assets sized for 16:9 node and dialog crops; icons come from one open-source Phosphor family; no CSS/inline-SVG replacement art is used.
-- Copy and content: UI copy describes the standalone read-only project preview. Project, draft, prompt, route and generation data come from the canonical document adapter.
-- Accessibility and interaction: semantic buttons/select/dialog labels, keyboard selection and escape handling, visible focus, reduced-motion support and practical mobile toolbar targets are present.
+- Fonts and typography: a compact system/Inter fallback hierarchy mirrors the target's small, medium-weight canvas labels, muted metadata, and low-emphasis controls. Node titles truncate instead of reflowing; prompt text is constrained inside its editable card.
+- Spacing and layout rhythm: the working world uses 622 × 350 media cards and 350 × 350 text cards, with source-aligned label offsets, 44-unit dots, direct handles, curved links, and fixed 38–46 px control groups.
+- Colors and visual tokens: `#141414` canvas, subdued `#525252` dot field, neutral `#86909c` edges, charcoal surfaces, and a restrained cyan interaction accent preserve the reference's contrast hierarchy without importing its brand palette.
+- Image quality and asset fidelity: media uses only local Open Canvas fixture previews at their native crops. Icons are from the Phosphor icon family; no source images, logos, inline SVG recreations, or hotlinked media are shipped.
+- Copy and content: the UI uses independent Open Canvas terminology. Text nodes persist real canvas prompts; image, video, and composition nodes retain their own canonical project data.
+
+**Interaction checks**
+
+- Direct drag from a node label moves the node and records the canonical position update; nested media controls do not accidentally start a drag.
+- The hand tool pans the transformed canvas while header and tool chrome remain fixed.
+- The add menu creates text, image, video, and composition nodes at the current viewport center; text prompts are editable and survive the shared command path.
+- Typed sequence and dependency handles accept valid graph connections, render curved solid links, and preserve canonical edge semantics.
+- A full reload returned the preview to the saved fixture state. The browser had no application console errors after reload; Vite and React DevTools informational messages were ignored.
 
 **Comparison History**
 
-- Iteration 1 — P2 mobile positioning: the first 390 × 844 capture laid out around the first shot before the asynchronous initial selection moved to the dirty second shot, leaving the active node mostly off-screen.
-- Fix: the viewport now keys mobile layout to both draft and selected node, recenters after selection, and responds when crossing the mobile breakpoint. A regression test asserts the initial mobile view transform.
-- Post-fix evidence: `docs/qa/jim-7/mobile-night-selected.png` and `docs/qa/jim-7/compare-mobile-selected.png`; the selected dirty shot, both ports and its parameter panel are visible at the target viewport.
+1. **P1 — canvas scale and card geometry.** The first implementation used a smaller world-card base, which forced a visibly higher fit zoom than the captured canvas. **Fix:** set media cards to 622 × 350, text cards to 350 × 350, then updated fixture positions and the compact fit cap. **Post-fix evidence:** `comparison-current-panned-final.jpg` shows matching first-node width and baseline at approximately 36% zoom.
+2. **P1 — dot field was hidden by the React Flow pane.** The first local capture lost the target's visible dotted plane. **Fix:** made `.react-flow__pane` transparent and set an explicit 44-unit dot background. **Post-fix evidence:** `comparison-grid-crop.jpg`.
+3. **P2 — edge and handle treatment drifted.** Dependency links were dashed and their handles were cyan at rest, unlike the neutral solid-link state in the source. **Fix:** use solid neutral curved edges and neutral resting handles; reserve cyan for interaction. **Post-fix evidence:** the full-view comparison and focused node capture.
+4. **P2 — text node was only a visual placeholder.** A text card needed to represent editable creative context in the same durable document that the agent/CLI will consume. **Fix:** added `composition.role: "text"` plus a required persisted prompt, command-core mutation support, and no-op generation semantics. **Post-fix evidence:** `comparison-text-selected-final.jpg` and the text-node mutation/job tests.
+5. **P2 — compact header composition was too product-dashboard-like.** **Fix:** aligned narrow canvas chrome to a left canvas selector and compact helper controls while retaining the standalone product's own labels and actions. **Post-fix evidence:** running-browser layout check described above.
 
 **Open Questions**
 
-- The approved reference has no Open Canvas composition equivalent and no retainable queued/failed visual captures. Composition layout and all five generation-state semantics therefore follow `docs/schema/canvas-document-v1.schema.json` and the canonical examples, as required.
+- The reference did not expose a complete provider-generation or editing timeline flow in the captured state. Those capabilities remain intentionally out of the visual clone scope; the canvas protocol already has typed nodes, assets, graph edges, durable prompts, and a composition node to support the next provider/CLI phase.
 
 **Implementation Checklist**
 
-- [x] Desktop and mobile source/implementation pairs compared at identical viewports.
-- [x] Pan, zoom, fit, draft switch, node selection, edge toggle and asset dialog exercised in Chrome.
-- [x] Application console checked; no error or warning originated from `localhost` (extension-only errors were observed and classified above).
-- [x] Unit, adapter, responsive and production-build checks completed.
+- [x] Compared source and implementation at the same compact canvas viewport and similar pan/zoom state.
+- [x] Verified focused grid, selected text node, node handles, and curved links.
+- [x] Exercised direct drag, hand pan, add menu, prompt update, zoom, and fit.
+- [x] Passed core tests (29), preview tests (15), production preview build, and Sites worker tests (4).
+- [x] Kept all temporary source evidence out of shipped product assets.
 
 **Follow-up Polish**
 
-- P3: a future real asset resolver can replace the fixture-only preview URL map when the CLI delivery defines project-relative binary serving. This does not affect the current read-only fixture acceptance path.
+- P3: split the large React Flow/preview bundle before a production release; the current production build passes but Vite reports a 500 kB chunk-size advisory.
 
 final result: passed

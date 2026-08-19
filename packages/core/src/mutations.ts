@@ -198,12 +198,15 @@ export function updateNode(input: CanvasDocument, options: UpdateNodeOptions): C
   const { document, draft } = prepareMutation(input, options.draftId, options.expectedProjectRevision, options.expectedDraftRevision);
   const node = draft.nodes.find((candidate) => candidate.id === options.nodeId);
   if (!node) throw new Error(`Unknown node: ${options.nodeId}`);
-  if (options.prompt !== undefined && node.spec.kind !== "shot") {
-    throw new Error("Prompt updates apply only to shot nodes");
+  const canUpdatePrompt = node.spec.kind === "shot" || (
+    node.spec.kind === "composition" && node.spec.role === "text"
+  );
+  if (options.prompt !== undefined && !canUpdatePrompt) {
+    throw new Error("Prompt updates apply only to shot and text nodes");
   }
   if (options.title !== undefined) node.title = options.title;
   if (options.position !== undefined) node.position = clone(options.position);
-  const nextSpec = options.spec ?? (options.prompt !== undefined && node.spec.kind === "shot"
+  const nextSpec = options.spec ?? (options.prompt !== undefined && canUpdatePrompt
     ? { ...node.spec, prompt: options.prompt }
     : undefined);
   if (nextSpec !== undefined) {

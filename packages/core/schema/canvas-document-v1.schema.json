@@ -291,8 +291,37 @@
         },
         "mediaType": {
           "const": "video/mp4"
+        },
+        "role": {
+          "enum": [
+            "composition",
+            "text"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "required": [
+              "prompt"
+            ]
+          }
+        }
+      ]
     },
     "execution": {
       "type": "object",

@@ -34,6 +34,13 @@ test("rejects unknown fields and credential-shaped values", async () => {
   );
 });
 
+test("requires textual content for a text canvas node", async () => {
+  const input = await loadExample();
+  const composition = input.drafts[0].nodes.find((node: any) => node.spec.kind === "composition");
+  composition.spec.role = "text";
+  assert.throws(() => parseCanvasDocument(input), CanvasValidationError);
+});
+
 test("rejects semantic cross-draft references and invalid asset identity", async () => {
   const crossDraft = await loadExample(examples[1]);
   crossDraft.drafts[1].edges[0].targetNodeId = "node_019c8f55-9999-7000-8000-000000000999";

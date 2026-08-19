@@ -5,6 +5,14 @@ export type Timestamp = string;
 export type DraftId = string;
 export type NodeId = string;
 export type AssetId = string;
+export type CompositionSpec = {
+  [k: string]: unknown;
+} & {
+  kind: "composition";
+  mediaType: "video/mp4";
+  role?: "composition" | "text";
+  prompt?: string;
+};
 export type Execution = {
   [k: string]: unknown;
 } & {
@@ -106,10 +114,6 @@ export interface RoutingHints {
 export interface RouteHint {
   providerId?: string;
   modelId?: string;
-}
-export interface CompositionSpec {
-  kind: "composition";
-  mediaType: "video/mp4";
 }
 export interface Edge {
   id: EdgeId;
