@@ -48,7 +48,7 @@ const CONTEXT_NODE_PRESETS = Object.freeze({
     prompt: "定义故事节奏、场景拆分与镜头调度。",
   },
   "frame-analysis": {
-    label: "镜头分析",
+    label: "逐帧拉片",
     mediaType: "application/json",
     prompt: "分析参考视频的镜头、构图、动作与节奏。",
   },

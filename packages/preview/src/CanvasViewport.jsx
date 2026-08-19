@@ -13,6 +13,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import {
+  Aperture,
   ArrowLeft,
   ArrowUp,
   ArrowsOutSimple,
@@ -22,12 +23,14 @@ import {
   Clock,
   CornersOut,
   Crosshair,
+  Cube,
   Cursor,
   DownloadSimple,
   FilmSlate,
   FileText,
   FolderSimple,
   GridFour,
+  GlobeHemisphereWest,
   GitBranch,
   HighDefinition,
   ImageSquare,
@@ -262,22 +265,31 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt }) {
           )}
         </div>
         <footer className="composer-tools composer-tools-media">
-          <button type="button" className="composer-provider" aria-label="选择生成模型"><Sparkle weight="fill" aria-hidden="true" /><span>图像模型</span><CaretRight aria-hidden="true" /></button>
-          <span className="composer-divider" />
-          <button type="button" className="composer-settings" aria-label="调整图像规格"><span>{`${requirements.aspectRatio ?? "16:9"} · 标准画质 · ${requirements.width ? "2K" : "高清"} · 1张`}</span><CaretRight aria-hidden="true" /></button>
-          <button type="button" className="composer-utility" aria-label="预设"><GridFour aria-hidden="true" /></button>
-          <span className="composer-spacer" />
-          <button type="button" className="composer-utility" aria-label="翻译提示词"><TextT aria-hidden="true" /></button>
-          <button type="button" className="composer-utility" aria-label="提示词调节"><Sparkle weight="fill" aria-hidden="true" /></button>
-          <span className={`composer-state ${node.statusMeta.tone}`} title={node.statusMeta.label}><StatusIcon status={node.status} /></span>
-          <button
-            className="composer-submit"
-            type="submit"
-            disabled={!canEditPrompt || !prompt.trim() || prompt.trim() === node.spec.prompt}
-            aria-label="应用提示词"
-          >
-            <ArrowUp weight="bold" aria-hidden="true" />
-          </button>
+          <div className="composer-settings-group">
+            <button type="button" className="composer-provider" aria-label="选择生成模型"><Sparkle weight="fill" aria-hidden="true" /><span>图像模型</span><CaretRight aria-hidden="true" /></button>
+            <span className="composer-divider" />
+            <button type="button" className="composer-settings" aria-label="调整图像规格"><span>{`${requirements.aspectRatio ?? "16:9"} · 标准画质 · ${requirements.width ? "2K" : "高清"} · 1张`}</span><CaretRight aria-hidden="true" /></button>
+            <span className="composer-divider" />
+            <button type="button" className="composer-utility composer-preset" aria-label="预设"><Shapes aria-hidden="true" /></button>
+            <button type="button" className="composer-utility" aria-label="扩展图像参数"><Aperture aria-hidden="true" /></button>
+          </div>
+          <div className="composer-tools-end">
+            <div className="composer-utilities">
+              <button type="button" className="composer-utility" aria-label="翻译提示词"><TextT aria-hidden="true" /></button>
+              <button type="button" className="composer-utility" aria-label="提示词调节"><Sparkle weight="fill" aria-hidden="true" /></button>
+            </div>
+            <div className="composer-submit-group">
+              <span className={`composer-state ${node.statusMeta.tone}`} title={node.statusMeta.label}><StatusIcon status={node.status} /></span>
+              <button
+                className="composer-submit"
+                type="submit"
+                disabled={!canEditPrompt || !prompt.trim() || prompt.trim() === node.spec.prompt}
+                aria-label="应用提示词"
+              >
+                <ArrowUp weight="bold" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
         </footer>
       </form>
     </section>
@@ -294,7 +306,13 @@ function CanvasHandle({ id, type, position, label }) {
       role="button"
       tabIndex={-1}
       aria-label={label}
-    />
+    >
+      <span className={`canvas-handle-hit-area canvas-handle-hit-area-${position}`}>
+        <span className="canvas-handle-visual" aria-hidden="true">
+          <Plus weight="bold" />
+        </span>
+      </span>
+    </Handle>
   );
 }
 
@@ -318,6 +336,14 @@ function NodeQuickActions({ kind, node }) {
       { label: "宫格切分", icon: GridFour, caret: true },
     ];
 
+  const renderAction = ({ label, icon: Icon, caret }) => (
+    <button className="quick-action" key={label} type="button" aria-label={label} title={label}>
+      <Icon weight="regular" aria-hidden="true" />
+      <span>{label}</span>
+      {caret ? <CaretRight className="quick-caret" weight="bold" aria-hidden="true" /> : null}
+    </button>
+  );
+
   return (
     <div className="node-quick-actions nodrag nowheel" aria-label={`${node.title} 快捷配置`}>
       <button className="quick-person-action" type="button" aria-label="人像质感调节" title="人像质感调节">
@@ -326,13 +352,15 @@ function NodeQuickActions({ kind, node }) {
         <em>NEW</em>
         <CaretRight className="quick-caret" weight="bold" aria-hidden="true" />
       </button>
-      {actions.map(({ label, icon: Icon, caret }) => (
-        <button className="quick-action" key={label} type="button" aria-label={label} title={label}>
-          <Icon weight="regular" aria-hidden="true" />
-          <span>{label}</span>
-          {caret ? <CaretRight className="quick-caret" weight="bold" aria-hidden="true" /> : null}
-        </button>
-      ))}
+      {renderAction(actions[0])}
+      <div className="quick-action-group">
+        {renderAction(actions[1])}
+        {renderAction(actions[2])}
+        <span className="quick-group-divider" aria-hidden="true" />
+        {renderAction(actions[3])}
+      </div>
+      {renderAction(actions[4])}
+      {renderAction(actions[5])}
       <span className="quick-actions-divider" />
       <button type="button" aria-label="画笔编辑" title="画笔编辑"><PaintBrush aria-hidden="true" /></button>
       <button type="button" aria-label="定位主体" title="定位主体"><Crosshair aria-hidden="true" /></button>
@@ -420,9 +448,6 @@ function CanvasNode({ data, selected }) {
           }}
         >
           <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
-          <span className="node-corner-status" title={node.statusMeta.label}>
-            {node.status === "succeeded" ? <CheckCircle weight="fill" aria-hidden="true" /> : null}
-          </span>
         </div>
 
         {selected ? <NodeQuickActions kind={kind} node={node} /> : null}
@@ -445,12 +470,12 @@ function CanvasAddMenu({ open, onClose, onAddNode }) {
     <div className="canvas-add-menu" role="menu" aria-label="添加画布节点" data-canvas-control>
       <p className="add-menu-heading">添加节点</p>
       <div className="add-menu-list">
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "text" })}><TextT aria-hidden="true" /><span>文本</span></button>
+        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "text" })}><TextAlignLeft aria-hidden="true" /><span>文本</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "shot", mediaKind: "image" })}><ImageSquare aria-hidden="true" /><span>图片</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "shot", mediaKind: "video" })}><VideoCamera aria-hidden="true" /><span>视频</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "smart-edit" })}><Scissors aria-hidden="true" /><span>智能剪辑</span><small>Beta</small></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "director" })}><FilmSlate aria-hidden="true" /><span>导演台</span><small className="new">NEW</small></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "frame-analysis" })}><MagnifyingGlassPlus aria-hidden="true" /><span>逐帧分析</span><small className="new">2.5</small></button>
+        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "director" })}><Stack aria-hidden="true" /><span>导演台</span><small className="new">NEW</small></button>
+        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "frame-analysis" })}><MagnifyingGlassPlus aria-hidden="true" /><span>逐帧拉片</span><Sparkle className="add-menu-model-spark" weight="fill" aria-hidden="true" /><small className="new add-menu-model-badge">SD 2.5</small></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "audio" })}><SpeakerHigh aria-hidden="true" /><span>音频</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "script" })}><FileText aria-hidden="true" /><span>脚本</span><CaretRight aria-hidden="true" /></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "asset-library" })}><FolderSimple aria-hidden="true" /><span>素材库</span><CaretRight aria-hidden="true" /></button>
@@ -458,7 +483,7 @@ function CanvasAddMenu({ open, onClose, onAddNode }) {
       <p className="add-menu-heading add-menu-resource-heading">添加资源</p>
       <div className="add-menu-list add-menu-resource-list">
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "asset-library" })}><UploadSimple aria-hidden="true" /><span>上传</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "asset-library" })}><Clock aria-hidden="true" /><span>从生成历史中选择</span></button>
+        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "asset-library" })}><Sparkle aria-hidden="true" /><span>从生成历史选择</span></button>
       </div>
     </div>
   );
@@ -492,6 +517,7 @@ function ToolboxPanel({ onClose }) {
     <section className="dock-toolbox-panel" role="dialog" aria-labelledby="toolbox-title" data-canvas-control>
       <header>
         <h2 id="toolbox-title">我的工具箱</h2>
+        <Question className="toolbox-info" weight="regular" aria-label="工具箱说明" />
         <span>常用创作预设</span>
         <button type="button" onClick={onClose} aria-label="关闭工具箱"><X aria-hidden="true" /></button>
       </header>
@@ -511,8 +537,8 @@ function LibraryPopover({ onClose }) {
   return (
     <section className="dock-library-popover" role="dialog" aria-labelledby="library-title" data-canvas-control>
       <h2 id="library-title">素材库</h2>
-      <button type="button" onClick={onClose}><Shapes weight="regular" aria-hidden="true" /><span>风格库</span><small>NEW</small></button>
-      <button type="button" onClick={onClose}><Sparkle weight="fill" aria-hidden="true" /><span>特效库</span><small>NEW</small></button>
+      <button type="button" onClick={onClose}><span className="library-entry-icon"><Cube weight="regular" aria-hidden="true" /></span><span>风格库</span><small>NEW</small></button>
+      <button type="button" onClick={onClose}><span className="library-entry-icon"><GlobeHemisphereWest weight="regular" aria-hidden="true" /></span><span>特效库</span><small>NEW</small></button>
     </section>
   );
 }
@@ -554,24 +580,32 @@ function ShortcutSheet({ onClose }) {
 
 function RoleLibraryModal({ onClose }) {
   const primary = ROLE_PRESETS[0];
+  const contactSheet = Array.from({ length: 9 });
+  const angleTop = Array.from({ length: 6 });
+  const angleBottom = Array.from({ length: 3 });
   return (
     <>
       <CanvasOverlay onClose={onClose} />
       <section className="role-library-modal" role="dialog" aria-modal="true" aria-labelledby="role-library-title" data-canvas-control>
         <header><h2 id="role-library-title">角色库</h2><button type="button" onClick={onClose} aria-label="关闭角色库"><X aria-hidden="true" /></button></header>
         <section className="role-library-feature">
-          <h3>{primary.title} <span>创作角色设定</span></h3>
+          <h3>{primary.title} <span>角色创作参考</span></h3>
           <div className="role-feature-images">
-            <img src={primary.image} alt={`${primary.title} 全身设定`} />
-            <img src={primary.image} alt={`${primary.title} 近景设定`} />
-            <img src={primary.image} alt={`${primary.title} 表情设定`} />
-            <img src={primary.image} alt={`${primary.title} 场景设定`} />
+            <img className="role-pose-full" src={primary.image} alt={`${primary.title} 全身设定`} />
+            <img className="role-pose-close" src={primary.image} alt={`${primary.title} 近景设定`} />
+            <div className="role-contact-sheet" aria-label={`${primary.title} 表情设定`}>
+              {contactSheet.map((_, index) => <img key={index} src={primary.image} alt="" />)}
+            </div>
+            <div className="role-angle-sheet" aria-label={`${primary.title} 多视角设定`}>
+              <div>{angleTop.map((_, index) => <img key={index} src={primary.image} alt="" />)}</div>
+              <div>{angleBottom.map((_, index) => <img key={index} src={primary.image} alt="" />)}</div>
+            </div>
           </div>
           <footer><p>可将角色外观、服装和场景气质作为画布中的统一参考。</p><button type="button" onClick={onClose}><Plus weight="bold" aria-hidden="true" />应用至画布</button></footer>
         </section>
         <footer className="role-library-carousel">
           <button type="button" aria-label="角色筛选">角色筛选 <CaretRight aria-hidden="true" /></button>
-          <span>最近使用</span>
+          <label className="role-recent-toggle"><input type="checkbox" aria-label="仅显示最近使用" /><span>最近使用</span></label>
           <div className="role-carousel-track">
             <button className="role-carousel-arrow role-carousel-prev" type="button" aria-label="上一组角色"><CaretRight aria-hidden="true" /></button>
             {ROLE_PRESETS.map((role) => <button key={role.title} type="button" onClick={onClose}><img src={role.image} alt={role.title} /><small>{role.title}</small></button>)}
@@ -591,7 +625,7 @@ function HistoryModal({ draft, onClose, onSelectNode }) {
       <section className="canvas-history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title" data-canvas-control>
         <header><h2 id="history-title">历史资产</h2><div><button type="button" aria-label="缩小历史缩略图">−</button><span>100%</span><button type="button" aria-label="放大历史缩略图">+</button></div><button type="button" onClick={onClose} aria-label="关闭历史资产"><X aria-hidden="true" /></button></header>
         <nav><button type="button" className="active">图片历史({entries.length})</button><button type="button">视频历史(0)</button><button type="button">音频历史(0)</button><span /><button type="button">时间降序</button><button type="button">批量操作</button></nav>
-        <section className="history-content"><p>今天</p><div>{entries.map(({ asset, node }) => <button key={asset.id} type="button" onClick={() => { onSelectNode(node.id); onClose(); }}><img src={asset.previewUrl} alt={node.title} /></button>)}</div><span>{entries.length > 0 ? "没有更多了" : "暂无历史资产"}</span></section>
+        <section className="history-content"><p>2026-08-20</p><div>{entries.map(({ asset, node }) => <button key={asset.id} type="button" onClick={() => { onSelectNode(node.id); onClose(); }}><img src={asset.previewUrl} alt={node.title} /></button>)}</div><span>{entries.length > 0 ? "没有更多了" : "暂无历史资产"}</span></section>
       </section>
     </>
   );
@@ -860,7 +894,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         proOptions={{ hideAttribution: true }}
         data-testid="react-flow-editor"
       >
-        <Background variant={BackgroundVariant.Dots} gap={32} size={1} color="#3c3c3c" />
+        <Background variant={BackgroundVariant.Dots} gap={32} size={1} color="#474747" />
         {showMinimap ? <MiniMap className="canvas-mini-map" maskColor="rgb(20 20 20 / 66%)" pannable zoomable /> : null}
       </ReactFlow>
 
