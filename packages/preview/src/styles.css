@@ -612,6 +612,8 @@ textarea:focus-visible,
 .canvas-handle-hit-area-right { left: 0; }
 
 .canvas-handle-visual {
+  --canvas-handle-translate-x: 0px;
+  --canvas-handle-scale: 1;
   z-index: 1;
   display: grid;
   width: 20px;
@@ -624,12 +626,14 @@ textarea:focus-visible,
   border: 1.2px solid rgb(255 255 255 / 70%);
   border-radius: 50%;
   flex: none;
+  transform: translateX(var(--canvas-handle-translate-x)) scale(var(--canvas-handle-scale));
+  transform-origin: center;
   transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 
-.canvas-handle-visual svg { width: 14px; height: 14px; }
-.canvas-handle-hit-area-left .canvas-handle-visual { transform: translateX(25px); }
-.canvas-handle-hit-area-right .canvas-handle-visual { transform: translateX(-25px); }
+.canvas-handle-visual svg { width: 7px; height: 7px; stroke-width: 1.5px; }
+.canvas-handle-hit-area-left .canvas-handle-visual { --canvas-handle-translate-x: 25px; }
+.canvas-handle-hit-area-right .canvas-handle-visual { --canvas-handle-translate-x: -25px; }
 
 .react-flow__node:has(.react-flow__handle.canvas-handle:hover) .canvas-handle-visual,
 .react-flow__node:has(.react-flow__handle.canvas-handle.connectingfrom) .canvas-handle-visual,
@@ -637,7 +641,7 @@ textarea:focus-visible,
   color: var(--accent);
   background: #263746;
   border-color: var(--accent);
-  transform: scale(1.08);
+  --canvas-handle-scale: 1.08;
 }
 
 .node-quick-actions {
@@ -663,6 +667,12 @@ textarea:focus-visible,
   cursor: default;
 }
 
+.node-quick-actions-overlay {
+  top: var(--quick-actions-top);
+  left: var(--quick-actions-left);
+  z-index: 1001;
+}
+
 .node-quick-actions button {
   display: inline-flex;
   height: 32px;
@@ -679,8 +689,78 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
-.node-quick-actions button:hover { background: #373737; }
+.node-quick-actions button:hover { background: transparent; }
 .node-quick-actions button > svg { width: 16px; height: 16px; flex: 0 0 auto; color: #fff; }
+.quick-action-menu-anchor {
+  position: relative;
+  display: inline-flex;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.node-quick-actions .quick-action.active { background: rgb(255 255 255 / 15%); }
+.quick-action-submenu {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  width: 120px;
+  padding-top: 12px;
+  flex-direction: column;
+  transform: translateX(-50%);
+}
+.quick-action-submenu-inner {
+  display: flex;
+  padding: 4px;
+  flex-direction: column;
+  gap: 4px;
+  background: #363636;
+  border: 1px solid #525252;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 25%), 0 2px 4px rgb(0 0 0 / 30%);
+}
+.node-quick-actions .quick-action-submenu button {
+  display: flex;
+  width: 110px;
+  height: 32px;
+  padding: 0 8px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: #f7f7f7;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 17.875px;
+  text-align: left;
+}
+.node-quick-actions .quick-action-submenu button.active,
+.node-quick-actions .quick-action-submenu button:hover { background: rgb(255 255 255 / 15%); }
+.quick-action-submenu-grid { width: 280px; }
+.quick-action-submenu-grid .quick-action-submenu-inner {
+  max-height: min(360px, 55vh);
+  padding: 6px;
+  gap: 2px;
+  overflow-y: auto;
+}
+.node-quick-actions .quick-action-submenu-grid button {
+  width: 256px;
+  min-height: 39.25px;
+  height: 39.25px;
+  padding: 10px 8px;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 19.25px;
+}
+.node-quick-actions .quick-action-submenu-grid button > svg { width: 16px; height: 16px; }
+.node-quick-actions .quick-action-submenu-grid button > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .node-quick-actions .quick-person-action { padding: 0 8px; }
 .quick-person-action > em {
   display: inline-flex;
@@ -709,6 +789,66 @@ textarea:focus-visible,
 .quick-group-divider { width: 1px; height: 20px; flex: 0 0 auto; background: #363636; }
 .quick-actions-divider { width: .5px; height: 32px; margin: 0 4px; flex: 0 0 auto; background: #363636; }
 .node-quick-actions > button:nth-last-child(-n + 4) { width: 32px; padding: 0; }
+
+.node-quick-actions button[data-tooltip],
+.canvas-dock button[data-tooltip],
+.canvas-aside button[data-tooltip] { position: relative; }
+
+.node-quick-actions button[data-tooltip]::after,
+.canvas-dock button[data-tooltip]::after,
+.canvas-aside button[data-tooltip]::after {
+  position: absolute;
+  z-index: 40;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  color: #f7f7f7;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 17px;
+  white-space: nowrap;
+  pointer-events: none;
+  content: attr(data-tooltip);
+  border: 1px solid #363636;
+  border-radius: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
+}
+
+.node-quick-actions button[data-tooltip]::after {
+  top: calc(100% + 16px);
+  left: 50%;
+  background: #000;
+  box-shadow: 0 8px 16px rgb(0 0 0 / 18%), 0 2px 4px rgb(0 0 0 / 20%);
+  transform: translate(-50%, -2px);
+}
+
+.canvas-dock button[data-tooltip]::after {
+  bottom: calc(100% + 15px);
+  left: 50%;
+  background: #262626;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 25%), 0 2px 4px rgb(0 0 0 / 30%);
+  transform: translate(-50%, 2px);
+}
+
+.canvas-aside button[data-tooltip]::after {
+  bottom: calc(100% + 7px);
+  left: 50%;
+  background: #000;
+  box-shadow: 0 8px 16px rgb(0 0 0 / 18%), 0 2px 4px rgb(0 0 0 / 20%);
+  transform: translate(-50%, 2px);
+}
+
+.node-quick-actions button[data-tooltip]:hover::after,
+.node-quick-actions button[data-tooltip]:focus-visible::after,
+.canvas-dock button[data-tooltip]:hover::after,
+.canvas-dock button[data-tooltip]:focus-visible::after,
+.canvas-aside button[data-tooltip]:hover::after,
+.canvas-aside button[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
 
 /* Selected-node composer stays in the same transformed world as its node. */
 
@@ -1025,11 +1165,12 @@ textarea:focus-visible,
   border-radius: 8px;
 }
 
-.canvas-dock button:hover,
-.canvas-aside button:hover,
 .canvas-zoom-options button:hover,
 .canvas-dock button.active,
-.canvas-aside button.active { color: #f7f7f7; background: #3b3b3b; }
+.canvas-aside button.active { color: #f7f7f7; background: rgb(255 255 255 / 15%); }
+
+.canvas-dock button:hover:not(.dock-add):not(.active) { background: transparent; }
+.canvas-aside button:hover:not(.asset-manage-button):not(.active) { background: transparent; }
 
 .canvas-dock button svg,
 .canvas-aside button svg,
@@ -1110,9 +1251,13 @@ textarea:focus-visible,
 .dock-toolbox-panel {
   z-index: 26;
   bottom: 74px;
-  left: calc(50% - 304px);
+  left: calc(50% - 304.5px);
   width: 480px;
-  height: 459px;
+  height: 460px;
+  padding-bottom: 12px;
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 12px;
 }
@@ -1135,7 +1280,8 @@ textarea:focus-visible,
 
 .dock-toolbox-panel > header {
   display: flex;
-  height: 54px;
+  height: 53px;
+  flex: 0 0 53px;
   padding: 0 16px;
   align-items: center;
   gap: 8px;
@@ -1180,26 +1326,27 @@ textarea:focus-visible,
 .toolbox-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-rows: 172px;
-  height: calc(100% - 54px);
-  padding: 14px 26px 14px 16px;
+  grid-auto-rows: 167px;
+  min-height: 0;
+  flex: 1;
+  padding: 16px;
   gap: 12px;
   align-content: start;
   overflow-y: auto;
-  scrollbar-color: #838383 transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
-.toolbox-grid::-webkit-scrollbar { width: 6px; }
-.toolbox-grid::-webkit-scrollbar-track { background: transparent; }
-.toolbox-grid::-webkit-scrollbar-thumb { background: #838383; border-radius: 8px; }
+.toolbox-grid::-webkit-scrollbar { width: 0; height: 0; }
+.toolbox-scroll-rail { position: absolute; top: 64px; right: 2px; bottom: 13px; width: 8px; pointer-events: none; }
+.toolbox-scroll-track { position: absolute; inset: 0; display: block; }
+.toolbox-scroll-thumb { position: absolute; top: 0; left: 1px; display: block; width: 6px; min-height: 24px; background: #838383; border-radius: 8px; transform-origin: top; }
 
 .toolbox-grid > button {
   display: grid;
   min-width: 0;
   padding: 0;
   align-content: start;
-  gap: 7px;
+  gap: 4px;
   overflow: hidden;
   color: #dcdcdc;
   text-align: left;
@@ -1209,7 +1356,7 @@ textarea:focus-visible,
 
 .toolbox-grid > button:hover { color: #fff; background: #363636; }
 .toolbox-grid img { display: block; width: 100%; height: 137px; object-fit: cover; border-radius: 7px; }
-.toolbox-grid span { padding: 0 4px; overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.toolbox-grid span { padding: 0 4px; overflow: hidden; color: #bdbdbd; font-size: 12px; font-weight: 400; line-height: 17px; text-overflow: ellipsis; white-space: nowrap; }
 
 .dock-library-popover {
   z-index: 26;
@@ -1275,7 +1422,7 @@ textarea:focus-visible,
 .dock-tutorial-popover {
   z-index: 26;
   bottom: 74px;
-  left: calc(50% + 93px);
+  left: calc(50% + 92.5px);
   width: 104px;
   min-height: 155px;
   padding: 8px;
@@ -1328,8 +1475,12 @@ textarea:focus-visible,
 .shortcut-columns section { min-width: 0; }
 .shortcut-columns h2 { margin: 0 0 15px; color: #f0f0f0; font-size: 13px; font-weight: 600; }
 .shortcut-columns section > div { display: flex; min-height: 33px; align-items: center; justify-content: space-between; gap: 8px; color: #aaa; font-size: 12px; }
-.shortcut-columns strong { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; color: #dedede; font-weight: 500; white-space: nowrap; }
+.shortcut-keyset { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; color: #dedede; font-weight: 500; white-space: nowrap; }
+.shortcut-key-separator { color: #aaa; }
+.shortcut-key-suffix { color: inherit; }
 .shortcut-columns kbd { min-width: 21px; padding: 3px 5px; color: #e3e3e3; background: #3a3a3a; border: 1px solid #515151; border-radius: 4px; box-shadow: inset 0 -1px #2a2a2a; font: inherit; font-size: 10px; text-align: center; }
+.shortcut-icon-key { display: inline-grid; place-items: center; }
+.shortcut-icon-key svg { width: 12px; height: 12px; }
 
 .canvas-modal-backdrop {
   position: absolute;
@@ -1449,22 +1600,27 @@ textarea:focus-visible,
 .canvas-aside .zoom-value { width: 34px; color: #fff; font-size: 13px; font-weight: 450; }
 
 .canvas-zoom-options {
-  bottom: 60px;
-  left: 16px;
+  z-index: 26;
+  bottom: 54px;
+  left: calc(50% - 186.8125px);
   width: 188px;
-  padding: 8px;
-  color: #e7e7e7;
-  background: #292929;
-  border: 1px solid #464646;
-  border-radius: 10px;
-  box-shadow: 0 10px 26px rgb(0 0 0 / 42%);
+  padding: 6px;
+  color: #f7f7f7;
+  background: #262626;
+  border: 1px solid #363636;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 25%), 0 2px 4px rgb(0 0 0 / 30%);
 }
 
-.canvas-zoom-options > div:first-child { display: flex; height: 32px; align-items: center; justify-content: space-between; }
-.canvas-zoom-options > div:first-child strong { font-size: 12px; font-weight: 520; }
-.zoom-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding-top: 8px; border-top: 1px solid #404040; }
-.zoom-presets button { width: 100%; height: 28px; color: #cfcfcf; font-size: 11px; }
-.zoom-presets button:last-child { grid-column: 1 / -1; }
+.zoom-input-block { padding-bottom: 6px; }
+.zoom-input-wrap { display: flex; height: 32px; padding: 0 8px; align-items: center; color: #f7f7f7; background: rgb(255 255 255 / 10%); border: 1px solid transparent; border-radius: 8px; }
+.zoom-input-wrap input { width: 0; height: 20px; min-width: 0; min-height: 0; padding: 0; flex: 1; color: #fff; appearance: none; outline: 0; border: 0; font: 13px/20px "Noto Sans CJK SC", "PingFang SC", Inter, ui-sans-serif, sans-serif; }
+.zoom-input-wrap span { color: #8d8d8d; font-size: 12px; line-height: 20px; }
+.zoom-menu-row { display: flex !important; width: 100% !important; height: 36px !important; padding: 8px 10px !important; align-items: center; justify-content: flex-start; gap: 8px; color: #fff; background: transparent; border-radius: 8px; font: 13px/20px "Noto Sans CJK SC", "PingFang SC", Inter, ui-sans-serif, sans-serif; text-align: left; }
+.zoom-menu-row:hover { background: rgb(255 255 255 / 8%); }
+.zoom-key-combo { display: inline-flex; margin-left: auto; align-items: center; gap: 8px; color: #8d8d8d; }
+.zoom-key-combo span { min-width: 8px; text-align: center; }
+.zoom-menu-divider { display: block; height: 1px; margin: 4px; background: #363636; }
 
 .canvas-asset-manager {
   position: absolute;
@@ -1707,26 +1863,45 @@ textarea:focus-visible,
   .canvas-dock button,
   .canvas-dock .dock-add { width: 32px; height: 32px; }
   .canvas-add-menu { bottom: 110px; left: calc(50% - 243px); width: 196px; }
-  .canvas-zoom-options { left: 16px; bottom: 60px; }
+  .canvas-zoom-options { bottom: 55px; left: calc(50% - 186.8125px); }
   .canvas-asset-manager { top: 0; right: auto; bottom: 0; left: 0; width: 240px; }
   .dock-toolbox-panel,
   .dock-library-popover,
   .dock-shortcut-sheet { bottom: 114px; }
-  .dock-tutorial-popover { bottom: 129px; }
+  .dock-tutorial-popover { bottom: 114px; }
   .dock-shortcut-sheet {
     height: calc(100dvh - 165px);
     padding: 16px;
-    overflow-y: auto;
+    overflow: hidden;
     border-radius: 16px;
   }
   .dock-shortcut-sheet .shortcut-close { top: 10px; right: 10px; }
-  .shortcut-columns { grid-template-columns: 1fr; gap: 0; }
-  .shortcut-columns section { display: flex; padding: 0 0 20px; flex-direction: column; gap: 12px; border-bottom: 1px solid #414141; }
-  .shortcut-columns h2 { margin: 0 0 7.75px; color: #09caf5; }
+  .shortcut-columns {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: #909090 transparent;
+    scrollbar-width: auto;
+  }
+  .shortcut-columns::-webkit-scrollbar { width: 0; height: 0; }
+  .shortcut-scroll-rail { position: absolute; top: 34px; right: 17px; bottom: 20px; display: block; width: 12px; pointer-events: none; }
+  .shortcut-scroll-track { position: absolute; inset: 0 0 16px; display: block; }
+  .shortcut-scroll-thumb { position: absolute; top: 0; left: 1px; display: block; width: 10px; min-height: 28px; background: #909090; border-radius: 999px; transform-origin: top; }
+  .shortcut-scroll-end { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; color: #929292; transform: rotate(90deg); }
+  .shortcut-columns section { display: flex; padding: 0 0 20px; flex-direction: column; gap: 12px; border-bottom: 1px solid #363636; }
+  .shortcut-columns h2 { margin: 0 0 7px; color: #09caf5; font-size: 14px; font-weight: 500; line-height: 20px; }
   .shortcut-columns section + section { padding-top: 0; }
   .shortcut-columns section:last-child { border-bottom: 0; }
-  .shortcut-columns section > div { display: flex; min-height: 55.25px; align-items: flex-start; justify-content: flex-start; gap: 8px; flex-direction: column; }
-  .shortcut-columns strong { justify-content: flex-start; }
+  .shortcut-columns section > div { min-height: 0; align-items: flex-start; justify-content: flex-start; gap: 8px; flex-direction: column; color: #919191; font-size: 14px; line-height: 19.25px; }
+  .shortcut-keyset { min-height: 28px; align-items: center; justify-content: flex-start; gap: 8px; color: #fff; font: 14px/20px "Noto Sans CJK SC", sans-serif; font-weight: 400; }
+  .shortcut-key-separator { color: #919191; }
+  .shortcut-key-suffix { color: #fff; }
+  .shortcut-columns kbd { display: inline-flex; min-width: 28px; height: 28px; padding: 0 4px; align-items: center; justify-content: center; color: #fff; background: transparent; border: 1px solid #363636; border-radius: 8px; box-shadow: none; font: 14px/20px ui-sans-serif, system-ui, sans-serif; }
+  .shortcut-icon-key { padding: 0; }
+  .shortcut-icon-key svg { width: 14px; height: 14px; }
   .role-library-modal {
     top: 50%;
     width: min(696px, calc(100vw - 136px));

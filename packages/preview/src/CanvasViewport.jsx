@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -22,10 +22,12 @@ import {
   CheckCircle,
   Clock,
   CornersOut,
+  Crop,
   Crosshair,
   Cube,
   Cursor,
   DownloadSimple,
+  Eraser,
   FilmSlate,
   FileText,
   FolderSimple,
@@ -37,11 +39,12 @@ import {
   Keyboard,
   Magnet,
   MapTrifold,
-  MagnifyingGlassMinus,
   MagnifyingGlassPlus,
+  Minus,
   Paperclip,
   PaintBrush,
   Pause,
+  PencilSimple,
   Plus,
   Question,
   Scissors,
@@ -70,7 +73,7 @@ import {
 } from "./react-flow-model.js";
 
 const MIN_ZOOM = 0.32;
-const MAX_ZOOM = 1.8;
+const MAX_ZOOM = 8;
 const FIT_VIEW_PADDING = { top: "106px", right: "14px", bottom: "132px", left: "14px" };
 const DEFAULT_CANVAS_ZOOM = 0.5;
 
@@ -307,46 +310,134 @@ function CanvasHandle({ id, type, position, label }) {
       tabIndex={-1}
       aria-label={label}
     >
-      <span className={`canvas-handle-hit-area canvas-handle-hit-area-${position}`}>
-        <span className="canvas-handle-visual" aria-hidden="true">
-          <Plus weight="bold" />
+        <span className={`canvas-handle-hit-area canvas-handle-hit-area-${position}`}>
+          <span className="canvas-handle-visual" aria-hidden="true">
+            <Plus weight="regular" />
+          </span>
         </span>
-      </span>
     </Handle>
   );
 }
 
-function NodeQuickActions({ kind, node }) {
+function NodeQuickActions({ kind, node, className = "", style }) {
+  const [openMenu, setOpenMenu] = useState(null);
   if (kind !== "image" && kind !== "video") return null;
+  const actionMenus = {
+    高清: {
+      label: "图像快捷操作",
+      variant: "compact",
+      items: [
+        { label: "高清", icon: HighDefinition },
+        { label: "扩图", icon: CornersOut },
+        { label: "重绘", icon: PencilSimple },
+        { label: "擦除", icon: Eraser },
+        { label: "抠图", icon: Scissors },
+        { label: "裁剪", icon: Crop },
+      ],
+    },
+    九宫格: {
+      label: "分镜布局预设",
+      variant: "grid",
+      items: [
+        { label: "多机位九宫格", icon: GridFour },
+        { label: "剧情推演四宫格", icon: GridFour },
+        { label: "角色脸部三视图", icon: Crosshair },
+        { label: "角色设定图", icon: UserCircle },
+        { label: "场景设定图", icon: Stack },
+        { label: "产品设定图", icon: Cube },
+        { label: "25宫格连贯分镜", icon: GridFour },
+        { label: "电影级光影校正", icon: Aperture },
+        { label: "角色三视图", icon: UsersThree },
+        { label: "画面推演 - 3秒后", icon: FilmSlate },
+        { label: "画面推演 - 5秒前", icon: FilmSlate },
+      ],
+    },
+  };
+  const releasePointerFocus = (event) => {
+    if (event.detail === 0) return;
+    const button = event.currentTarget;
+    window.requestAnimationFrame(() => button.blur());
+  };
   const actions = kind === "image"
     ? [
-      { label: "全景", icon: CornersOut },
-      { label: "多角度", icon: Crosshair },
-      { label: "打光", icon: Sparkle },
-      { label: "九宫格", icon: GridFour, caret: true },
-      { label: "高清", icon: HighDefinition, caret: true },
-      { label: "宫格切分", icon: GridFour, caret: true },
+      { label: "全景", icon: CornersOut, tooltip: "基于当前场景创建720°全景图" },
+      { label: "多角度", icon: Crosshair, tooltip: "多角度" },
+      { label: "打光", icon: Sparkle, tooltip: "打光" },
+      { label: "九宫格", icon: GridFour, caret: true, tooltip: "九宫格布局" },
+      { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
+      { label: "宫格切分", icon: GridFour, caret: true, tooltip: "宫格切分" },
     ]
     : [
-      { label: "运动", icon: Sparkle },
-      { label: "多角度", icon: Crosshair },
-      { label: "打光", icon: Sparkle },
-      { label: "九宫格", icon: GridFour, caret: true },
-      { label: "高清", icon: HighDefinition, caret: true },
-      { label: "宫格切分", icon: GridFour, caret: true },
+      { label: "运动", icon: Sparkle, tooltip: "运动控制" },
+      { label: "多角度", icon: Crosshair, tooltip: "多角度" },
+      { label: "打光", icon: Sparkle, tooltip: "打光" },
+      { label: "九宫格", icon: GridFour, caret: true, tooltip: "九宫格布局" },
+      { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
+      { label: "宫格切分", icon: GridFour, caret: true, tooltip: "宫格切分" },
     ];
 
-  const renderAction = ({ label, icon: Icon, caret }) => (
-    <button className="quick-action" key={label} type="button" aria-label={label} title={label}>
-      <Icon weight="regular" aria-hidden="true" />
-      <span>{label}</span>
-      {caret ? <CaretRight className="quick-caret" weight="bold" aria-hidden="true" /> : null}
-    </button>
-  );
+  const renderAction = ({ label, icon: Icon, caret, tooltip }) => {
+    const menu = actionMenus[label];
+    const items = menu?.items;
+    const menuOpen = openMenu === label;
+    const button = (
+      <button
+        className={`quick-action${menuOpen ? " active" : ""}`}
+        type="button"
+        aria-label={label}
+        aria-expanded={menu ? menuOpen : undefined}
+        aria-haspopup={menu ? "menu" : undefined}
+        data-tooltip={menu ? undefined : tooltip ?? label}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (menu) setOpenMenu((current) => current === label ? null : label);
+          releasePointerFocus(event);
+        }}
+      >
+        <Icon weight="regular" aria-hidden="true" />
+        <span>{label}</span>
+        {caret ? <CaretRight className="quick-caret" weight="bold" aria-hidden="true" /> : null}
+      </button>
+    );
+
+    if (!menu) return <span className="quick-action-menu-anchor" key={label}>{button}</span>;
+    return (
+      <span className="quick-action-menu-anchor" key={label}>
+        {button}
+        {menuOpen ? (
+          <span className={`quick-action-submenu quick-action-submenu-${menu.variant}`} role="menu" aria-label={menu.label}>
+            <span className="quick-action-submenu-inner">
+              {items.map(({ label: item, icon: ItemIcon }, index) => (
+                <button
+                  key={item}
+                  className={menu.variant === "compact" && index === 0 ? "active" : ""}
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setOpenMenu(null);
+                    releasePointerFocus(event);
+                  }}
+                >
+                  <ItemIcon weight="regular" aria-hidden="true" />
+                  <span>{item}</span>
+                </button>
+              ))}
+            </span>
+          </span>
+        ) : null}
+      </span>
+    );
+  };
 
   return (
-    <div className="node-quick-actions nodrag nowheel" aria-label={`${node.title} 快捷配置`}>
-      <button className="quick-person-action" type="button" aria-label="人像质感调节" title="人像质感调节">
+    <div
+      className={`node-quick-actions nodrag nowheel ${className}`}
+      style={style}
+      aria-label={`${node.title} 快捷配置`}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <button className="quick-person-action" type="button" aria-label="人像质感调节" data-tooltip="人像质感调节">
         <UserCircle weight="regular" aria-hidden="true" />
         <span>人像质感调节</span>
         <em>NEW</em>
@@ -362,10 +453,10 @@ function NodeQuickActions({ kind, node }) {
       {renderAction(actions[4])}
       {renderAction(actions[5])}
       <span className="quick-actions-divider" />
-      <button type="button" aria-label="画笔编辑" title="画笔编辑"><PaintBrush aria-hidden="true" /></button>
-      <button type="button" aria-label="定位主体" title="定位主体"><Crosshair aria-hidden="true" /></button>
-      <button type="button" aria-label="下载素材" title="下载素材"><DownloadSimple aria-hidden="true" /></button>
-      <button type="button" aria-label="打开素材预览" title="打开素材预览"><ArrowsOutSimple aria-hidden="true" /></button>
+      <button type="button" aria-label="画笔编辑" data-tooltip="画笔编辑"><PaintBrush aria-hidden="true" /></button>
+      <button type="button" aria-label="定位主体" data-tooltip="定位主体"><Crosshair aria-hidden="true" /></button>
+      <button type="button" aria-label="下载素材" data-tooltip="下载素材"><DownloadSimple aria-hidden="true" /></button>
+      <button type="button" aria-label="打开素材预览" data-tooltip="打开素材预览"><ArrowsOutSimple aria-hidden="true" /></button>
     </div>
   );
 }
@@ -450,7 +541,6 @@ function CanvasNode({ data, selected }) {
           <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
         </div>
 
-        {selected ? <NodeQuickActions kind={kind} node={node} /> : null}
         {selected ? <NodeComposer node={node} kind={kind} graph={graph} onUpdatePrompt={onUpdatePrompt} /> : null}
       </div>
     </article>
@@ -490,15 +580,31 @@ function CanvasAddMenu({ open, onClose, onAddNode }) {
 }
 
 const TOOLBOX_PRESETS = Object.freeze([
-  { title: "深空开场", image: "/assets/shot-arrival.webp" },
-  { title: "未来空间", image: "/assets/shot-crossing.webp" },
-  { title: "能量降临", image: "/assets/shot-signal.webp" },
-  { title: "蓝色轨道", image: "/assets/reference-blue-orbit-v2.png" },
-  { title: "光束剪影", image: "/assets/shot-signal.webp" },
-  { title: "星港漫游", image: "/assets/shot-arrival.webp" },
-  { title: "城市回声", image: "/assets/shot-crossing.webp" },
-  { title: "轨道讯号", image: "/assets/reference-blue-orbit-v2.png" },
-  { title: "穿越序章", image: "/assets/shot-signal.webp" },
+  { title: "【预设】深空开场", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】未来空间转场", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】能量降临", image: "/assets/shot-signal.webp" },
+  { title: "【预设】蓝色轨道", image: "/assets/reference-blue-orbit-v2.png" },
+  { title: "【预设】光束剪影", image: "/assets/shot-signal.webp" },
+  { title: "【预设】星港漫游", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】城市回声", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】轨道讯号", image: "/assets/reference-blue-orbit-v2.png" },
+  { title: "【预设】穿越序章", image: "/assets/shot-signal.webp" },
+  { title: "【预设】镜头推进", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】叙事定格", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】环形聚焦", image: "/assets/reference-blue-orbit-v2.png" },
+  { title: "【预设】光影转场", image: "/assets/shot-signal.webp" },
+  { title: "【预设】空间切换", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】氛围开场", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】蓝调推进", image: "/assets/reference-blue-orbit-v2.png" },
+  { title: "【预设】信号闪现", image: "/assets/shot-signal.webp" },
+  { title: "【预设】镜头停驻", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】叙事转折", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】轨道漫游", image: "/assets/reference-blue-orbit-v2.png" },
+  { title: "【预设】能量显现", image: "/assets/shot-signal.webp" },
+  { title: "【预设】城市远景", image: "/assets/shot-arrival.webp" },
+  { title: "【预设】空间穿越", image: "/assets/shot-crossing.webp" },
+  { title: "【预设】光束定格", image: "/assets/shot-signal.webp" },
+  { title: "【预设】蓝色收束", image: "/assets/reference-blue-orbit-v2.png" },
 ]);
 
 const ROLE_PRESETS = Object.freeze([
@@ -513,15 +619,40 @@ function CanvasOverlay({ onClose }) {
 }
 
 function ToolboxPanel({ onClose }) {
+  const scrollRef = useRef(null);
+  const [scrollMetrics, setScrollMetrics] = useState({ clientHeight: 0, scrollHeight: 0, scrollTop: 0 });
+
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return undefined;
+    const sync = () => setScrollMetrics({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    });
+    sync();
+    element.addEventListener("scroll", sync, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+    observer?.observe(element);
+    return () => {
+      element.removeEventListener("scroll", sync);
+      observer?.disconnect();
+    };
+  }, []);
+
+  const scrollable = scrollMetrics.scrollHeight > scrollMetrics.clientHeight + 1;
+  const visibleRatio = scrollable ? scrollMetrics.clientHeight / scrollMetrics.scrollHeight : 1;
+  const progress = scrollable ? scrollMetrics.scrollTop / (scrollMetrics.scrollHeight - scrollMetrics.clientHeight) : 0;
+
   return (
     <section className="dock-toolbox-panel" role="dialog" aria-labelledby="toolbox-title" data-canvas-control>
       <header>
         <h2 id="toolbox-title">我的工具箱</h2>
         <Question className="toolbox-info" weight="regular" aria-label="工具箱说明" />
-        <span>常用创作预设</span>
+        <span>电影创作常用分镜</span>
         <button type="button" onClick={onClose} aria-label="关闭工具箱"><X aria-hidden="true" /></button>
       </header>
-      <div className="toolbox-grid">
+      <div className="toolbox-grid" ref={scrollRef}>
         {TOOLBOX_PRESETS.map((preset) => (
           <button key={preset.title} type="button" aria-label={`使用预设 ${preset.title}`}>
             <img src={preset.image} alt="" />
@@ -529,6 +660,13 @@ function ToolboxPanel({ onClose }) {
           </button>
         ))}
       </div>
+      {scrollable ? (
+        <div className="toolbox-scroll-rail" aria-hidden="true">
+          <span className="toolbox-scroll-track">
+            <span className="toolbox-scroll-thumb" style={{ height: `${visibleRatio * 100}%`, transform: `translateY(${progress * (1 / visibleRatio - 1) * 100}%)` }} />
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -555,25 +693,105 @@ function TutorialPopover({ onClose }) {
 }
 
 function ShortcutSheet({ onClose }) {
+  const scrollRef = useRef(null);
+  const [scrollMetrics, setScrollMetrics] = useState({ clientHeight: 0, scrollHeight: 0, scrollTop: 0 });
   const groups = [
-    { title: "创作", rows: [["成组", "Ctrl/Alt", "G"], ["合并分镜组", "Ctrl", "Alt", "G"], ["解组", "Ctrl/Alt", "Shift", "G"], ["连线", "Ctrl", "L"], ["复制节点和连线", "Ctrl", "D"], ["生成", "Ctrl", "Enter"], ["新建节点", "Tab"], ["节点复制", "Alt", "+拖动节点"], ["创建副本", "Ctrl", "Alt", "+拖动"]] },
-    { title: "缩放", rows: [["放大", "Ctrl", "+"], ["缩小", "Ctrl", "−"], ["适应画布", "Ctrl", "0"], ["触控板", "⌘", "滚动"], ["鼠标", "Ctrl", "滚轮"]] },
-    { title: "移动画布", rows: [["键盘", "Space", "拖动"], ["触控板", "双指拖动"], ["鼠标", "Ctrl", "拖动"], ["移动", "V"], ["抓手工具", "H"], ["整理画布", "Alt", "Shift", "F"]] },
-    { title: "其他", rows: [["撤销", "Ctrl", "Z"], ["重做", "Ctrl", "Shift", "Z"], ["删除", "Backspace"]] },
+    {
+      title: "创作",
+      rows: [
+        { label: "成组", keys: ["Ctrl/Alt", "G"] },
+        { label: "合并分镜组", keys: ["Ctrl", "Alt", "G"] },
+        { label: "解组", keys: ["Ctrl/Alt", "Shift", "G"] },
+        { label: "连线", keys: ["Ctrl", "L"] },
+        { label: "复制节点和连线", keys: ["Ctrl", "D"] },
+        { label: "生成", keys: ["Ctrl", "Enter"] },
+        { label: "新建节点", keys: ["Tab"] },
+        { label: "节点复制", keys: ["Alt"], suffix: "+拖动节点" },
+        { label: "创建副本", keys: ["Ctrl", "Alt"], suffix: "+拖动" },
+      ],
+    },
+    {
+      title: "缩放",
+      rows: [
+        { label: "放大", keys: ["Ctrl", { icon: "plus", label: "+" }] },
+        { label: "缩小", keys: ["Ctrl", { icon: "minus", label: "−" }] },
+        { label: "适应画布", keys: ["Ctrl", "0"] },
+        { label: "触控板", keys: ["⌘", "滚动"] },
+        { label: "鼠标", keys: ["Ctrl", "滚轮"] },
+      ],
+    },
+    {
+      title: "移动画布",
+      rows: [
+        { label: "键盘", keys: ["Space", "拖动"] },
+        { label: "触控板", keys: ["双指拖动"] },
+        { label: "鼠标", keys: ["Ctrl", "拖动"] },
+        { label: "移动", keys: ["V"] },
+        { label: "抓手工具", keys: ["H"] },
+        { label: "整理画布", keys: ["Alt", "Shift", "F"] },
+      ],
+    },
+    { title: "其他", rows: [{ label: "撤销", keys: ["Ctrl", "Z"] }, { label: "重做", keys: ["Ctrl", "Shift", "Z"] }, { label: "删除", keys: ["Backspace"] }] },
   ];
+
+  const renderKey = (key) => {
+    if (typeof key === "string") return key;
+    if (key.icon === "plus") return <Plus weight="regular" aria-label={key.label} />;
+    return <Minus weight="regular" aria-label={key.label} />;
+  };
+
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return undefined;
+    const sync = () => setScrollMetrics({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    });
+    sync();
+    element.addEventListener("scroll", sync, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+    observer?.observe(element);
+    return () => {
+      element.removeEventListener("scroll", sync);
+      observer?.disconnect();
+    };
+  }, []);
+
+  const scrollable = scrollMetrics.scrollHeight > scrollMetrics.clientHeight + 1;
+  const visibleRatio = scrollable ? scrollMetrics.clientHeight / scrollMetrics.scrollHeight : 1;
+  const progress = scrollable ? scrollMetrics.scrollTop / (scrollMetrics.scrollHeight - scrollMetrics.clientHeight) : 0;
+
   return (
     <section className="dock-shortcut-sheet" role="dialog" aria-label="快捷键" data-canvas-control>
       <button className="shortcut-close" type="button" onClick={onClose} aria-label="关闭快捷键"><X aria-hidden="true" /></button>
-      <div className="shortcut-columns">
+      <div className="shortcut-columns" ref={scrollRef}>
         {groups.map((group) => (
           <section key={group.title}>
             <h2>{group.title}</h2>
             {group.rows.map((row) => (
-              <div key={`${group.title}-${row[0]}`}><span>{row[0]}</span><strong>{row.slice(1).map((key) => <kbd key={key}>{key}</kbd>)}</strong></div>
+              <div key={`${group.title}-${row.label}`}>
+                <span>{row.label}</span>
+                <span className="shortcut-keyset">
+                  {row.keys.flatMap((key, index) => [
+                    index > 0 ? <span className="shortcut-key-separator" key={`${row.label}-separator-${index}`} aria-hidden="true">+</span> : null,
+                    <kbd className={typeof key === "string" ? "" : "shortcut-icon-key"} key={`${row.label}-${typeof key === "string" ? key : key.label}`}>{renderKey(key)}</kbd>,
+                  ])}
+                  {row.suffix ? <span className="shortcut-key-suffix">{row.suffix}</span> : null}
+                </span>
+              </div>
             ))}
           </section>
         ))}
       </div>
+      {scrollable ? (
+        <div className="shortcut-scroll-rail" aria-hidden="true">
+          <span className="shortcut-scroll-track">
+            <span className="shortcut-scroll-thumb" style={{ height: `${visibleRatio * 100}%`, transform: `translateY(${progress * (1 / visibleRatio - 1) * 100}%)` }} />
+          </span>
+          <CaretRight className="shortcut-scroll-end" weight="fill" />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -634,9 +852,15 @@ function HistoryModal({ draft, onClose, onSelectNode }) {
 function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openPanel, setOpenPanel] = useState(null);
-  const togglePanel = (panel) => {
+  const releasePointerFocus = (event) => {
+    if (event.detail === 0) return;
+    const button = event.currentTarget;
+    window.requestAnimationFrame(() => button.blur());
+  };
+  const togglePanel = (panel, event) => {
     setMenuOpen(false);
     setOpenPanel((current) => current === panel ? null : panel);
+    releasePointerFocus(event);
   };
   const closePanel = () => setOpenPanel(null);
 
@@ -660,33 +884,64 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
       {openPanel === "roles" ? <RoleLibraryModal onClose={closePanel} /> : null}
       {openPanel === "history" ? <HistoryModal draft={draft} onClose={closePanel} onSelectNode={onSelectNode} /> : null}
       <div className="canvas-dock" role="toolbar" aria-label="画布工具" data-canvas-control>
-        <button className={`dock-add ${menuOpen ? "active" : ""}`} type="button" onClick={() => { setOpenPanel(null); setMenuOpen((value) => !value); }} aria-expanded={menuOpen} aria-label={menuOpen ? "关闭添加菜单" : "添加节点"} title={menuOpen ? "关闭添加菜单" : "添加节点"}>{menuOpen ? <X weight="bold" aria-hidden="true" /> : <Plus weight="bold" aria-hidden="true" />}</button>
-        <button className={tool === "pan" ? "active" : ""} type="button" onClick={() => onToolChange(tool === "pan" ? "select" : "pan")} aria-pressed={tool === "pan"} aria-label="移动" title={tool === "pan" ? "切换到选择模式 (V)" : "移动画布 (H)"}><Cursor weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={() => togglePanel("toolbox")} aria-label="打开工具箱" title="打开工具箱"><GitBranch weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "library" ? "active" : ""} type="button" onClick={() => togglePanel("library")} aria-label="素材库" title="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "roles" ? "active" : ""} type="button" onClick={() => togglePanel("roles")} aria-label="角色库" title="角色库"><UsersThree weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "history" ? "active" : ""} type="button" onClick={() => togglePanel("history")} aria-label="历史记录" title="历史记录"><Clock weight="regular" aria-hidden="true" /></button>
+        <button className={`dock-add ${menuOpen ? "active" : ""}`} type="button" onClick={(event) => { setOpenPanel(null); setMenuOpen((value) => !value); releasePointerFocus(event); }} aria-expanded={menuOpen} aria-label={menuOpen ? "关闭添加菜单" : "添加节点"} data-tooltip={menuOpen ? "关闭添加菜单" : "添加节点"}>{menuOpen ? <X weight="bold" aria-hidden="true" /> : <Plus weight="bold" aria-hidden="true" />}</button>
+        <button className={tool === "pan" ? "active" : ""} type="button" onClick={(event) => { onToolChange(tool === "pan" ? "select" : "pan"); releasePointerFocus(event); }} aria-pressed={tool === "pan"} aria-label="移动" data-tooltip={tool === "pan" ? "切换到选择模式 (V)" : "移动画布 (H)"}><Cursor weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><GitBranch weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "library" ? "active" : ""} type="button" onClick={(event) => togglePanel("library", event)} aria-label="素材库" data-tooltip="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "roles" ? "active" : ""} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><UsersThree weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "history" ? "active" : ""} type="button" onClick={(event) => togglePanel("history", event)} aria-label="历史记录" data-tooltip="历史记录"><Clock weight="regular" aria-hidden="true" /></button>
         <span className="dock-divider" />
-        <button className={openPanel === "shortcuts" ? "active" : ""} type="button" onClick={() => togglePanel("shortcuts")} aria-label="快捷键" title="快捷键"><Keyboard weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "tutorial" ? "active" : ""} type="button" onClick={() => togglePanel("tutorial")} aria-label="教程" title="教程"><Question weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "shortcuts" ? "active" : ""} type="button" onClick={(event) => togglePanel("shortcuts", event)} aria-label="快捷键" data-tooltip="快捷键"><Keyboard weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "tutorial" ? "active" : ""} type="button" onClick={(event) => togglePanel("tutorial", event)} aria-label="教程" data-tooltip="教程"><Question weight="regular" aria-hidden="true" /></button>
       </div>
     </>
   );
 }
 
 function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoom }) {
+  const [inputValue, setInputValue] = useState(() => String(Math.round(zoom * 100)));
+
+  useEffect(() => {
+    setInputValue(String(Math.round(zoom * 100)));
+  }, [zoom]);
+
+  const commitInputZoom = () => {
+    const parsed = Number(inputValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setInputValue(String(Math.round(zoom * 100)));
+      return;
+    }
+    onSetZoom(Math.min(800, Math.max(32, parsed)) / 100);
+  };
+
   if (!open) return null;
   return (
     <div className="canvas-zoom-options" role="menu" aria-label="缩放选项" data-canvas-control>
-      <div>
-        <button type="button" onClick={onZoomOut} aria-label="缩小画布"><MagnifyingGlassMinus aria-hidden="true" /></button>
-        <strong>{Math.round(zoom * 100)}%</strong>
-        <button type="button" onClick={onZoomIn} aria-label="放大画布"><MagnifyingGlassPlus aria-hidden="true" /></button>
+      <div className="zoom-input-block">
+        <label className="zoom-input-wrap">
+          <input
+            type="text"
+            inputMode="numeric"
+            aria-label="缩放百分比"
+            value={inputValue}
+            onChange={(event) => setInputValue(event.target.value.replace(/[^0-9]/g, ""))}
+            onBlur={commitInputZoom}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+                commitInputZoom();
+              }
+              if (event.key === "Escape") onClose();
+            }}
+          />
+          <span>%</span>
+        </label>
       </div>
-      <div className="zoom-presets">
-        {[0.5, 0.75, 1].map((value) => <button key={value} type="button" onClick={() => { onSetZoom(value); onClose(); }}>{Math.round(value * 100)}%</button>)}
-        <button type="button" onClick={() => { onFit(); onClose(); }}>适合画布</button>
-      </div>
+      <button className="zoom-menu-row" type="button" onClick={onZoomIn} aria-label="放大画布"><span>放大</span><span className="zoom-key-combo"><span>⌘</span><span>+</span></span></button>
+      <button className="zoom-menu-row" type="button" onClick={onZoomOut} aria-label="缩小画布"><span>缩小</span><span className="zoom-key-combo"><span>⌘</span><span>−</span></span></button>
+      <button className="zoom-menu-row" type="button" onClick={onFit} aria-label="适合屏幕"><span>适合屏幕</span><span className="zoom-key-combo"><span>⌘</span><span>0</span></span></button>
+      <span className="zoom-menu-divider" aria-hidden="true" />
+      {[0.5, 1, 8].map((value) => <button className="zoom-menu-row" key={value} type="button" onClick={() => onSetZoom(value)}>{`缩放至${Math.round(value * 100)}%`}</button>)}
     </div>
   );
 }
@@ -744,18 +999,23 @@ function CanvasAssetManager({ open, draft, onClose, onSelectNode }) {
 
 function CanvasAside({ draft, onSelectNode, assetManagerOpen, onAssetManagerChange, showEdges, onToggleEdges, snapToGrid, onToggleSnap, showMinimap, onToggleMinimap, zoom, onZoomIn, onZoomOut, onSetZoom, onFit, onArrange }) {
   const [zoomOpen, setZoomOpen] = useState(false);
+  const releasePointerFocus = (event) => {
+    if (event.detail === 0) return;
+    const button = event.currentTarget;
+    window.requestAnimationFrame(() => button.blur());
+  };
 
   return (
     <>
       {!assetManagerOpen ? (
         <>
           <div className="canvas-aside" data-canvas-control>
-            <button className="asset-manage-button" type="button" onClick={() => onAssetManagerChange(true)} aria-label="资产管理" title="资产管理"><Stack weight="regular" aria-hidden="true" /><span>资产管理</span></button>
-            <button type="button" onClick={onArrange} aria-label="整理画布，Alt+Shift+F" title="整理画布 (Alt+Shift+F)"><GridFour weight="regular" aria-hidden="true" /></button>
-            <button className={showMinimap ? "active" : ""} type="button" onClick={onToggleMinimap} aria-pressed={showMinimap} aria-label="切换小地图" title="切换小地图"><MapTrifold weight="regular" aria-hidden="true" /></button>
-            <button className={!showEdges ? "active" : ""} type="button" onClick={onToggleEdges} aria-pressed={!showEdges} aria-label="隐藏节点连线" title="隐藏节点连线"><BezierCurve weight="regular" aria-hidden="true" /></button>
-            <button className={snapToGrid ? "active" : ""} type="button" onClick={onToggleSnap} aria-pressed={snapToGrid} aria-label="网格吸附" title="网格吸附"><Magnet weight="regular" aria-hidden="true" /></button>
-            <button className="zoom-value" type="button" onClick={() => setZoomOpen((value) => !value)} aria-expanded={zoomOpen} aria-label="缩放选项" title="缩放选项">{Math.round(zoom * 100)}%</button>
+            <button className="asset-manage-button" type="button" onClick={(event) => { onAssetManagerChange(true); releasePointerFocus(event); }} aria-label="资产管理" title="资产管理"><Stack weight="regular" aria-hidden="true" /><span>资产管理</span></button>
+            <button type="button" onClick={(event) => { onArrange(); releasePointerFocus(event); }} aria-label="整理画布，Alt+Shift+F" data-tooltip="整理画布Alt+Shift+F"><GridFour weight="regular" aria-hidden="true" /></button>
+            <button className={showMinimap ? "active" : ""} type="button" onClick={(event) => { onToggleMinimap(); releasePointerFocus(event); }} aria-pressed={showMinimap} aria-label="切换小地图" data-tooltip="切换小地图"><MapTrifold weight="regular" aria-hidden="true" /></button>
+            <button className={!showEdges ? "active" : ""} type="button" onClick={(event) => { onToggleEdges(); releasePointerFocus(event); }} aria-pressed={!showEdges} aria-label="隐藏节点连线" data-tooltip="隐藏节点连线"><BezierCurve weight="regular" aria-hidden="true" /></button>
+            <button className={snapToGrid ? "active" : ""} type="button" onClick={(event) => { onToggleSnap(); releasePointerFocus(event); }} aria-pressed={snapToGrid} aria-label="网格吸附" data-tooltip="网格吸附"><Magnet weight="regular" aria-hidden="true" /></button>
+            <button className="zoom-value" type="button" onClick={(event) => { setZoomOpen((value) => !value); releasePointerFocus(event); }} aria-expanded={zoomOpen} aria-label="缩放选项" data-tooltip="缩放选项">{Math.round(zoom * 100)}%</button>
           </div>
           <ZoomOptions open={zoomOpen} zoom={zoom} onClose={() => setZoomOpen(false)} onFit={onFit} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onSetZoom={onSetZoom} />
         </>
@@ -788,6 +1048,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const [showMinimap, setShowMinimap] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_CANVAS_ZOOM);
   const [assetManagerOpen, setAssetManagerOpen] = useState(false);
+  const [quickActionsPosition, setQuickActionsPosition] = useState(null);
   const initialViewport = useMemo(() => ({
     // Preserve the reference's fixed world origin at narrow widths. The
     // canvas does not auto-fit its authored layout when the window shrinks.
@@ -805,6 +1066,37 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   );
   const [nodes, setNodes, handleNodesChange] = useNodesState(projectedNodes);
   const edges = useMemo(() => showEdges ? toFlowEdges(draft, selectedNodeId) : [], [draft, selectedNodeId, showEdges]);
+  const selectedNode = useMemo(() => draft.nodes.find((node) => node.id === selectedNodeId) ?? null, [draft.nodes, selectedNodeId]);
+  const selectedNodeKind = selectedNode ? getSurfaceKind(selectedNode) : null;
+
+  const syncQuickActionsPosition = useCallback(() => {
+    const viewport = viewportRef.current;
+    const node = viewport?.querySelector(".canvas-node.selected");
+    if (!viewport || !node) {
+      setQuickActionsPosition(null);
+      return;
+    }
+    const viewportRect = viewport.getBoundingClientRect();
+    const nodeRect = node.getBoundingClientRect();
+    setQuickActionsPosition({
+      left: nodeRect.left - viewportRect.left + nodeRect.width / 2,
+      top: nodeRect.top - viewportRect.top - 47,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!selectedNode || (selectedNodeKind !== "image" && selectedNodeKind !== "video")) {
+      setQuickActionsPosition(null);
+      return undefined;
+    }
+    syncQuickActionsPosition();
+    const frame = window.requestAnimationFrame(syncQuickActionsPosition);
+    window.addEventListener("resize", syncQuickActionsPosition);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncQuickActionsPosition);
+    };
+  }, [nodes, selectedNode, selectedNodeKind, syncQuickActionsPosition, zoom]);
 
   useEffect(() => {
     setNodes(projectedNodes);
@@ -874,7 +1166,10 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         }}
         isValidConnection={(connection) => Boolean(connectionToGraphMutation(draft, connection))}
         onEdgesDelete={(deletedEdges) => onDeleteEdges(deletedEdges.map((edge) => edge.id))}
-        onMove={(_, viewport) => setZoom(viewport.zoom)}
+        onMove={(_, viewport) => {
+          setZoom(viewport.zoom);
+          window.requestAnimationFrame(syncQuickActionsPosition);
+        }}
         nodesDraggable={tool === "select"}
         edgesReconnectable={false}
         panOnDrag={tool === "pan" ? true : [1, 2]}
@@ -897,6 +1192,15 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         <Background variant={BackgroundVariant.Dots} gap={32} size={1} color="#474747" />
         {showMinimap ? <MiniMap className="canvas-mini-map" maskColor="rgb(20 20 20 / 66%)" pannable zoomable /> : null}
       </ReactFlow>
+
+      {selectedNode && quickActionsPosition ? (
+        <NodeQuickActions
+          className="node-quick-actions-overlay"
+          kind={selectedNodeKind}
+          node={selectedNode}
+          style={{ "--quick-actions-left": `${quickActionsPosition.left}px`, "--quick-actions-top": `${quickActionsPosition.top}px` }}
+        />
+      ) : null}
 
       {draft.nodes.length === 0 ? <EmptyCanvasGuide onAddNode={addAtViewportCenter} /> : null}
       <CanvasAside
