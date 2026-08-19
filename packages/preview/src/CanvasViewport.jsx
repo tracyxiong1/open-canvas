@@ -46,13 +46,12 @@ import {
   Keyboard,
   Lightning,
   LinkSimple,
+  MapPin,
   MapPinArea,
   MagnifyingGlassPlus,
   Minus,
   Mountains,
-  Paperclip,
   PaperPlaneTilt,
-  Panorama,
   PaintBrushBroad,
   Pause,
   PencilSimple,
@@ -80,6 +79,7 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
+import { IconView360Number } from "@tabler/icons-react";
 import { getNodeSize } from "./project-document.js";
 import {
   connectionToGraphMutation,
@@ -277,8 +277,8 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
       <form onSubmit={submitPrompt}>
         <div className="composer-context-row" aria-hidden="true">
           <span><Plus weight="bold" />参考</span>
-          <span><Paperclip />标记</span>
-          <span><Sparkle weight="fill" />风格</span>
+          <span><MapPin />标记</span>
+          <span><Cube />风格</span>
           {portraitMode ? <span><Crosshair />聚焦</span> : null}
         </div>
         <div className="composer-input-row">
@@ -401,7 +401,7 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
     label: "人像调节选项",
     variant: "portrait",
     items: [
-      { label: "人像调节", icon: UserCircle },
+      { label: "人像调节", icon: User },
       { label: "情绪调节", icon: Smiley },
     ],
   };
@@ -412,7 +412,7 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
   };
   const actions = kind === "image"
     ? [
-      { label: "全景", icon: Panorama, tooltip: "基于当前场景创建720°全景图" },
+      { label: "全景", icon: IconView360Number, tooltip: "基于当前场景创建720°全景图" },
       { label: "多角度", icon: Atom, tooltip: "多角度" },
       { label: "打光", icon: SlidersHorizontal, tooltip: "打光" },
       { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },

@@ -58,6 +58,7 @@ The current pass closes the newly re-audited default/hover/selected connector st
 - Opened and closed the toolbox, library, role library, history, shortcut sheet, and tutorial surfaces; each has its own responsive geometry and dialog/menu semantics.
 - Verified role/history modal stacking after selecting an image: the modal backdrop and panel now cover the node toolbar instead of allowing it to bleed through.
 - Opened and dismissed the selected-node **人像质感调节**, **高清** image-action, and **九宫格** storyboard-preset menus. All preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
+- Rechecked the selected toolbar and composer at 1× after dependency-safe icon replacement: panorama rotation, portrait adjustment, marker, and style controls now use closer open-source icon silhouettes without copying source artwork.
 - Opened **宫格切分** and verified its five rows, separator, 150 × 225.25 px inner menu, and persistent node editing mode after switching menus or reselecting the node.
 - Panned across the full operation graph and verified the central image, text node, five compact enhancement nodes, panoramic node, role-view node, and eight fan-out edges against the same live viewport coordinates.
 - Selected and deselected the central image node and verified all adjacent edges switch between the neutral 2 px line and three-segment flowing highlight state.
@@ -106,6 +107,10 @@ The current pass closes the newly re-audited default/hover/selected connector st
 10. **P1 — default connector visibility, modal stacking, and asset-list focus still diverged in normal use.**
    - **Fix:** hide connector glyphs until node hover/selection, preserve the neutral card border and cursor on hover, lower the selected-node toolbar beneath modal layers, and implement the reference asset-list behavior: persistent sidebar, semantic ordering, active-row actions, 100% zoom, and centering within the remaining canvas.
    - **Post-fix result:** `21-comparison-default-after.png`, `30-local-role-z-fixed.png`, `35-comparison-asset-focus-text.png`, and `39-comparison-selected-menu-final.png` cover the corrected default, modal, asset-focus, and selected-menu states.
+
+11. **P2 — several generic toolbar glyphs still read as the wrong actions at normal zoom.**
+   - **Fix:** replace the panorama thumbnail glyph with Tabler's open-source numeric panorama icon, align the portrait menu with the same user silhouette, and switch the prompt marker/style chips to pin and cube glyphs.
+   - **Post-fix result:** `43-comparison-open-source-icon.png` verifies the same selected-node/menu state side by side; remaining differences are independent media artwork and source-specific branding.
 
 ## Implementation checklist
 

@@ -752,6 +752,7 @@ textarea:focus-visible,
 
 .node-quick-actions button:hover { background: transparent; }
 .node-quick-actions button > svg { width: 16px; height: 16px; flex: 0 0 auto; color: #fff; }
+.node-quick-actions .tabler-icon { stroke-width: 1.5; }
 .quick-action-menu-anchor {
   position: relative;
   display: inline-flex;

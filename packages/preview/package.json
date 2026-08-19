@@ -17,6 +17,7 @@
   "dependencies": {
     "@open-canvas/core": "0.1.0",
     "@phosphor-icons/react": "^2.1.10",
+    "@tabler/icons-react": "^3.46.0",
     "@vitejs/plugin-react": "5.0.4",
     "@xyflow/react": "^12.11.2",
     "react": "19.2.0",
