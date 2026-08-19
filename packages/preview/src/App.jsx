@@ -93,6 +93,7 @@ function serializeProject(document) {
 
 function ProjectHeader({
   model,
+  assetManagerOpen,
   isDirty,
   canUndo,
   canRedo,
@@ -109,7 +110,7 @@ function ProjectHeader({
   const pending = (draft.statusCounts.dirty ?? 0) + (draft.statusCounts.failed ?? 0);
 
   return (
-    <header className="topbar">
+    <header className={`topbar${assetManagerOpen ? " asset-sidebar-open" : ""}`}>
       <div className="project-identity">
         <button className="project-mark" type="button" aria-label="打开工作区"><FilmSlate weight="fill" aria-hidden="true" /></button>
         <span className="project-kicker">工作区</span>
@@ -215,6 +216,7 @@ export function App({ initialDocument = referenceCanvasDemo }) {
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProject(initialDocument));
+  const [assetManagerOpen, setAssetManagerOpen] = useState(false);
 
   const model = useMemo(() => buildModel(document, draftId), [document, draftId]);
   const serializedDocument = useMemo(() => serializeProject(document), [document]);
@@ -432,6 +434,7 @@ export function App({ initialDocument = referenceCanvasDemo }) {
     <main className="app-shell">
       <ProjectHeader
         model={model}
+        assetManagerOpen={assetManagerOpen}
         isDirty={isDirty}
         canUndo={undoStack.length > 0}
         canRedo={redoStack.length > 0}
@@ -452,6 +455,7 @@ export function App({ initialDocument = referenceCanvasDemo }) {
         onDeleteEdges={handleDeleteEdges}
         onUpdatePrompt={handleUpdatePrompt}
         onArrange={handleArrange}
+        onAssetManagerChange={setAssetManagerOpen}
       />
 
       {notice ? (

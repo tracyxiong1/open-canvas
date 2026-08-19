@@ -19,7 +19,7 @@
         {
           "id": "node_019c8f55-9101-7000-8000-000000000001",
           "title": "图片节点 2",
-          "position": { "x": 0, "y": 0 },
+          "position": { "x": 145, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "shot",
@@ -45,7 +45,7 @@
         {
           "id": "node_019c8f55-9102-7000-8000-000000000002",
           "title": "文本节点 1",
-          "position": { "x": 414, "y": 0 },
+          "position": { "x": 559, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "composition",
