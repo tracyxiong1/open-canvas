@@ -101,7 +101,7 @@ function requestFor(document: CanvasDocument, draft: Draft, node: Node, jobId: s
   return {
     jobId,
     kind: node.spec.kind === "shot" ? node.spec.mediaKind : "video",
-    prompt: node.spec.kind === "shot" ? node.spec.prompt : `Compose ${node.title}`,
+    prompt: node.spec.kind === "shot" ? node.spec.prompt : node.spec.prompt ?? `Compose ${node.title}`,
     inputs: inputIds.map((assetId) => {
       const asset = assets.get(assetId);
       if (!asset) throw new Error(`Unknown input asset: ${assetId}`);
@@ -137,6 +137,9 @@ export function startGeneration(
   const node = findNode(draft, options.nodeId);
   if (node.execution.status !== "dirty" && node.execution.status !== "failed") {
     throw new Error(`Generation starts only from dirty or failed nodes: ${node.id}`);
+  }
+  if (node.spec.kind === "composition" && node.spec.role === "text") {
+    throw new Error(`Text nodes are prompts, not generation jobs: ${node.id}`);
   }
   if (node.spec.kind === "composition") {
     const dependencies = draft.edges

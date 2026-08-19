@@ -1,6 +1,9 @@
-export const NODE_WIDTH = 296;
-export const NODE_HEIGHT = 214;
-export const COMPOSITION_HEIGHT = 194;
+// The canvas uses a stable, medium-density world unit. Keeping these values
+// independent of rendered zoom lets the same document work in desktop and
+// compact studio viewports without changing canonical positions.
+export const NODE_WIDTH = 622;
+export const NODE_HEIGHT = 376;
+export const COMPOSITION_HEIGHT = 376;
 
 export const STATUS_META = Object.freeze({
   dirty: { label: "待生成", tone: "pending" },

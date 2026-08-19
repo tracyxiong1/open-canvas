@@ -9,13 +9,16 @@ import {
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
+  CaretDown,
   CheckCircle,
   DownloadSimple,
   FileArrowUp,
   FilmSlate,
   GitBranch,
-  Info,
+  Lightning,
   Play,
+  ShareNetwork,
+  Sparkle,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
@@ -71,8 +74,12 @@ function ProjectHeader({
         <div className="project-mark" aria-hidden="true"><FilmSlate weight="fill" /></div>
         <div className="project-copy">
           <span className="project-kicker">Open Canvas</span>
-          <strong title={model.project.title}>{model.project.title}</strong>
+          <strong title={model.project.title}>
+            <span className="project-name-full">{model.project.title}</span>
+            <span className="project-name-compact">画布 1</span>
+          </strong>
         </div>
+        <CaretDown className="project-caret" aria-hidden="true" />
       </div>
 
       <div className="draft-control">
@@ -102,8 +109,14 @@ function ProjectHeader({
           <DownloadSimple aria-hidden="true" /><span>导出 JSON</span>
         </button>
         <span className={`editor-badge ${isDirty ? "dirty" : ""}`} title={`Project revision ${model.revision}`}>
-          {isDirty ? "有本地更改" : `Schema v${model.schemaVersion} · 可编辑`}
+          {isDirty ? "未保存" : "已保存"}
         </span>
+      </div>
+
+      <div className="source-style-actions" aria-label="创作辅助工具">
+        <button type="button" className="header-icon-action" aria-label="分享画布" title="分享画布"><ShareNetwork aria-hidden="true" /></button>
+        <button type="button" className="header-credit-action" aria-label="创作额度"><Lightning weight="fill" aria-hidden="true" /><span>20</span></button>
+        <button type="button" className="header-agent-action" aria-label="打开创作 Agent"><Sparkle weight="fill" aria-hidden="true" /><span>Agent</span></button>
       </div>
     </header>
   );
@@ -263,27 +276,40 @@ export function App({ initialDocument = exampleDocument }) {
     }));
   }, [document, draftId, runMutation]);
 
-  const handleAddNode = useCallback((kind, position) => {
+  const handleAddNode = useCallback((descriptor, position) => {
+    const kind = typeof descriptor === "string" ? descriptor : descriptor.kind;
+    const mediaKind = typeof descriptor === "string" ? "video" : descriptor.mediaKind ?? "video";
+    const presentation = typeof descriptor === "string" ? null : descriptor.presentation ?? null;
     const draft = findCanonicalDraft(document, draftId);
     const count = draft.nodes.filter((node) => node.spec.kind === kind).length + 1;
     const spec = kind === "composition" ? {
       kind: "composition",
       mediaType: "video/mp4",
+      ...(presentation === "text" ? {
+        role: "text",
+        prompt: "写下这段创作的主题、情绪或叙事目标。",
+      } : {}),
     } : {
       kind: "shot",
       prompt: "描述这个镜头的主体、动作、环境与镜头语言。",
-      mediaKind: "video",
+      mediaKind,
       inputAssetIds: [],
       requirements: {
         aspectRatio: "16:9",
         durationSeconds: 5,
         audio: "either",
-        mediaType: "video/mp4",
+        mediaType: mediaKind === "image" ? "image/png" : "video/mp4",
       },
     };
-    runMutation(kind === "composition" ? "已新增合成节点" : "已新增镜头节点", (current) => addNode(current, {
+    const title = kind === "composition"
+      ? (presentation === "text" ? `文本 ${count}` : `剪辑 ${count}`)
+      : `${mediaKind === "image" ? "图片" : "视频"} ${count}`;
+    const addMessage = kind === "composition"
+      ? (presentation === "text" ? "已新增文本节点" : "已新增剪辑节点")
+      : `已新增${mediaKind === "image" ? "图片" : "视频"}节点`;
+    runMutation(addMessage, (current) => addNode(current, {
       draftId,
-      title: kind === "composition" ? `合成 ${count}` : `镜头 ${count}`,
+      title,
       spec,
       position,
       expectedProjectRevision: current.revision,
@@ -292,6 +318,27 @@ export function App({ initialDocument = exampleDocument }) {
       const nextDraft = findCanonicalDraft(nextDocument, draftId);
       setSelectedNodeId(nextDraft.nodes.at(-1)?.id ?? null);
     });
+  }, [document, draftId, runMutation]);
+
+  const handleArrange = useCallback(() => {
+    const draft = findCanonicalDraft(document, draftId);
+    if (draft.nodes.length === 0) return;
+    const columns = Math.min(3, Math.max(1, draft.nodes.length));
+    const columnGap = 760;
+    const rowGap = 520;
+    runMutation("已整理画布", (current) => draft.nodes.reduce((next, node, index) => {
+      const currentDraft = findCanonicalDraft(next, draftId);
+      return updateNode(next, {
+        draftId,
+        nodeId: node.id,
+        position: {
+          x: (index % columns) * columnGap,
+          y: Math.floor(index / columns) * rowGap,
+        },
+        expectedProjectRevision: next.revision,
+        expectedDraftRevision: currentDraft.revision,
+      });
+    }, current));
   }, [document, draftId, runMutation]);
 
   const handleConnectNodes = useCallback((connection) => {
@@ -350,12 +397,8 @@ export function App({ initialDocument = exampleDocument }) {
         onConnectNodes={handleConnectNodes}
         onDeleteEdges={handleDeleteEdges}
         onUpdatePrompt={handleUpdatePrompt}
+        onArrange={handleArrange}
       />
-
-      <div className="canvas-note" role="note" aria-label="编辑说明">
-        <Info weight="fill" aria-hidden="true" />
-        <span>拖动节点编辑布局；从端口建立关系；Delete 删除选中连线。</span>
-      </div>
 
       {notice ? (
         <div className={`toast ${notice.tone}`} role="status">

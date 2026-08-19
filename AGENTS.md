@@ -17,6 +17,16 @@
 - Do not invent visual styles or copy protected source assets. Use approved source evidence and open-source icons/assets.
 - Preserve unrelated work. Do not perform destructive Git operations.
 
+## Canvas visual direction
+
+- The studio is a general-purpose editable creative canvas, not a branded clone.
+- Match the approved interaction anatomy: a dark dotted infinite plane, fixed
+  top/bottom control layers, compact type-specific nodes, direct curved links,
+  and an inline composer that moves with the selected node.
+- Text, image, video, and editing/composition surfaces must be visually
+  distinguishable. Reference-product names, logos, imagery, model names, and
+  wording remain excluded.
+
 ## Delivery
 
 - Start by reading `docs/context-pack.md` and the relevant issue or PR context.

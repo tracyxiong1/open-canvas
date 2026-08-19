@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
-import { createPreviewModel } from "../src/project-document.js";
+import {
+  COMPOSITION_HEIGHT,
+  createPreviewModel,
+  NODE_HEIGHT,
+  NODE_WIDTH,
+} from "../src/project-document.js";
 import {
   connectionToGraphMutation,
   findOpenNodePosition,
@@ -31,7 +36,7 @@ describe("React Flow projection", () => {
   });
 
   it("maps sequence and dependency semantics to distinct handles", () => {
-    const edges = toFlowEdges(activeDraft(), "arrowclosed");
+    const edges = toFlowEdges(activeDraft());
     const sequence = edges.find((edge) => edge.data.kind === "sequence");
     const dependency = edges.find((edge) => edge.data.kind === "dependency");
 
@@ -43,7 +48,7 @@ describe("React Flow projection", () => {
     expect(dependency).toMatchObject({
       sourceHandle: HANDLE_IDS.dependencySource,
       targetHandle: HANDLE_IDS.dependencyTarget,
-      type: "smoothstep",
+      type: "default",
     });
   });
 
@@ -98,10 +103,10 @@ describe("React Flow projection", () => {
     expect(position).not.toEqual({ x: 360, y: 100 });
     for (const node of draft.nodes) {
       const separated = (
-        position.x + 296 + 36 <= node.position.x ||
-        node.position.x + 296 + 36 <= position.x ||
-        position.y + 214 + 36 <= node.position.y ||
-        node.position.y + (node.kind === "composition" ? 194 : 214) + 36 <= position.y
+        position.x + NODE_WIDTH + 36 <= node.position.x ||
+        node.position.x + NODE_WIDTH + 36 <= position.x ||
+        position.y + NODE_HEIGHT + 36 <= node.position.y ||
+        node.position.y + (node.kind === "composition" ? COMPOSITION_HEIGHT : NODE_HEIGHT) + 36 <= position.y
       );
       expect(separated).toBe(true);
     }

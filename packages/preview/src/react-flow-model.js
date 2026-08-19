@@ -5,8 +5,8 @@ import {
   NODE_WIDTH,
 } from "./project-document.js";
 
-const PARAMETER_PANEL_WIDTH = 420;
-const PARAMETER_PANEL_HEIGHT_WITH_GAP = 312;
+const PARAMETER_PANEL_WIDTH = NODE_WIDTH;
+const PARAMETER_PANEL_HEIGHT_WITH_GAP = 238;
 
 export const HANDLE_IDS = Object.freeze({
   sequenceSource: "sequence-source",
@@ -36,16 +36,18 @@ export function toFlowNodes(draft, selectedNodeId, data = {}) {
   });
 }
 
-export function toFlowEdges(draft, markerType) {
+export function toFlowEdges(draft) {
   return draft.edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
     sourceHandle: edge.kind === "sequence" ? HANDLE_IDS.sequenceSource : HANDLE_IDS.dependencySource,
     targetHandle: edge.kind === "sequence" ? HANDLE_IDS.sequenceTarget : HANDLE_IDS.dependencyTarget,
-    type: edge.kind === "sequence" ? "default" : "smoothstep",
+    // Both relationship types share the same curved visual grammar. Their
+    // semantic kind remains intact for validation and browser mutations.
+    type: "default",
     className: `canvas-edge ${edge.kind}`,
-    markerEnd: { type: markerType },
+    markerEnd: undefined,
     deletable: true,
     data: { kind: edge.kind },
   }));
@@ -86,14 +88,14 @@ export function findOpenNodePosition(draft, preferredPosition, kind) {
   for (const offset of candidates) {
     const candidate = {
       x: Math.round(preferredPosition.x + offset.x * (NODE_WIDTH + 64)),
-      y: Math.round(preferredPosition.y + offset.y * 286),
+      y: Math.round(preferredPosition.y + offset.y * (Math.max(NODE_HEIGHT, COMPOSITION_HEIGHT) + 64)),
     };
     const candidateRect = { ...candidate, width, height };
     if (!occupied.some((rect) => overlaps(candidateRect, rect))) return candidate;
   }
   return {
     x: Math.round(preferredPosition.x),
-    y: Math.round(preferredPosition.y + (occupied.length + 1) * 286),
+    y: Math.round(preferredPosition.y + (occupied.length + 1) * (Math.max(NODE_HEIGHT, COMPOSITION_HEIGHT) + 64)),
   };
 }
 

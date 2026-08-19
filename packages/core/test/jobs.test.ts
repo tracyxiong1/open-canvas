@@ -240,6 +240,32 @@ test("composition generation waits for every dependency output", () => {
   );
 });
 
+test("text nodes remain editable prompt context and never create a generation job", () => {
+  const empty = createProject({ title: "Text context" });
+  const withText = addNode(empty, {
+    draftId: empty.activeDraftId,
+    expectedProjectRevision: empty.revision,
+    expectedDraftRevision: empty.drafts[0].revision,
+    title: "Intent",
+    spec: {
+      kind: "composition",
+      mediaType: "video/mp4",
+      role: "text",
+      prompt: "A quiet prologue.",
+    },
+  });
+  const draft = withText.drafts[0];
+  assert.throws(
+    () => startGeneration(withText, {
+      draftId: draft.id,
+      nodeId: draft.nodes[0].id,
+      expectedProjectRevision: withText.revision,
+      expectedDraftRevision: draft.revision,
+    }),
+    /Text nodes are prompts/,
+  );
+});
+
 test("mock routing accepts partial compatible hints and rejects impossible requirements", () => {
   const createShot = (routing: any, requirements: any = {}) => {
     const empty = createProject({ title: "Routing" });

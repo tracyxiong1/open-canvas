@@ -18,7 +18,7 @@ describe("editable open canvas", () => {
     expect(screen.getByText("Three-shot science-fiction short")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "草稿" })).toHaveValue(exampleDocument.activeDraftId);
     expect(screen.getByTestId("react-flow-editor")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新增镜头" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "添加节点" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "导出 JSON" })).toBeEnabled();
 
     const selectedNode = await screen.findByRole("button", { name: /Shot 2 — Crossing，待生成/ });
@@ -27,7 +27,7 @@ describe("editable open canvas", () => {
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
       "At night, the courier walks through a moonlit glass transit corridor.",
     );
-    expect(screen.getByText("Schema v1 · 可编辑")).toBeInTheDocument();
+    expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 
   it("switches drafts and opens a generated asset preview", async () => {
@@ -58,10 +58,10 @@ describe("editable open canvas", () => {
     const prompt = screen.getByRole("textbox", { name: "Prompt" });
     await user.clear(prompt);
     await user.type(prompt, "A courier arrives during a violet electrical storm.");
-    await user.click(screen.getByRole("button", { name: "应用更改" }));
+    await user.click(screen.getByRole("button", { name: "应用提示词" }));
 
     expect(await screen.findByRole("button", { name: /Shot 1 — Arrival，待生成/ })).toBeInTheDocument();
-    expect(screen.getByText("有本地更改")).toBeInTheDocument();
+    expect(screen.getByText("未保存")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "撤销" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "撤销" }));
@@ -76,7 +76,8 @@ describe("editable open canvas", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const edgeToggle = screen.getByRole("button", { name: "显示连线" });
+    const toolbar = screen.getByRole("toolbar", { name: "画布工具" });
+    const edgeToggle = within(toolbar).getByRole("button", { name: "显示连线" });
     expect(edgeToggle).toHaveAttribute("aria-pressed", "true");
     await user.click(edgeToggle);
     expect(edgeToggle).toHaveAttribute("aria-pressed", "false");
@@ -88,9 +89,25 @@ describe("editable open canvas", () => {
     await user.click(selectButton);
     expect(selectButton).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(screen.getByRole("button", { name: "新增镜头" }));
-    expect(await screen.findByRole("button", { name: /镜头 4，待生成/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("有本地更改")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    expect(screen.getByRole("menu", { name: "添加画布节点" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: /视频/ }));
+    expect(await screen.findByRole("button", { name: /视频 4，待生成/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("未保存")).toBeInTheDocument();
+  });
+
+  it("adds a persistent text node with an editable canvas prompt", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "添加节点" }));
+    await user.click(screen.getByRole("menuitem", { name: /文本/ }));
+
+    const textNode = await screen.findByRole("button", { name: /文本 \d+，待生成/ });
+    expect(textNode).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
+      "写下这段创作的主题、情绪或叙事目标。",
+    );
   });
 
   it("renders queued, running, and failed states from validated job projections", async () => {
@@ -144,10 +161,11 @@ describe("editable open canvas", () => {
 
     render(<App initialDocument={stateDocument} />);
 
-    expect(await screen.findByText("正在生成 · 42%")).toBeInTheDocument();
-    expect(screen.getByLabelText("生成进度 42%")).toBeInTheDocument();
-    expect(screen.getByText("任务已进入生成队列")).toBeInTheDocument();
-    expect(screen.getByText("生成服务超时，可重试")).toBeInTheDocument();
+    expect(await screen.findByLabelText("运行镜头 生成中")).toBeInTheDocument();
+    expect(screen.getByLabelText("排队镜头 排队中")).toBeInTheDocument();
+    expect(screen.getByLabelText("失败镜头 失败")).toBeInTheDocument();
+    expect(screen.getByTestId("react-flow-editor").querySelector('[data-node-status="running"]')).not.toBeNull();
+    expect(screen.getByTestId("react-flow-editor").querySelector('[data-node-status="failed"]')).not.toBeNull();
   });
 
   it("keeps the editor and primary tools available at a mobile viewport", async () => {
@@ -157,7 +175,7 @@ describe("editable open canvas", () => {
       render(<App />);
       expect(await screen.findByRole("button", { name: /Shot 2 — Crossing，待生成/ })).toBeInTheDocument();
       expect(screen.getByRole("toolbar", { name: "画布工具" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "新增镜头" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "添加节点" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "导出 JSON" })).toBeEnabled();
     } finally {
       Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });

@@ -195,7 +195,7 @@ test("disconnecting an edge is revision checked and keeps the document valid", (
   assert.equal(disconnected.drafts[0].revision, connectedDraft.revision + 1);
 });
 
-test("prompt updates reject composition nodes instead of committing a no-op", async () => {
+test("prompt updates reject generated composition nodes instead of committing a no-op", async () => {
   const source = await example();
   const draft = source.drafts[0];
   const composition = draft.nodes.find((node: any) => node.spec.kind === "composition");
@@ -208,8 +208,39 @@ test("prompt updates reject composition nodes instead of committing a no-op", as
         expectedDraftRevision: draft.revision,
         prompt: "not applicable",
       }),
-    /shot nodes/,
+    /shot and text nodes/,
   );
+});
+
+test("text composition nodes persist their editable canvas prompt", () => {
+  const empty = createProject({ title: "Text canvas" });
+  const withText = addNode(empty, {
+    draftId: empty.activeDraftId,
+    expectedProjectRevision: empty.revision,
+    expectedDraftRevision: empty.drafts[0].revision,
+    title: "Intent",
+    spec: {
+      kind: "composition",
+      mediaType: "video/mp4",
+      role: "text",
+      prompt: "An uneasy reunion at dusk.",
+    },
+  });
+  const draft = withText.drafts[0];
+  const updated = updateNode(withText, {
+    draftId: draft.id,
+    nodeId: draft.nodes[0].id,
+    expectedProjectRevision: withText.revision,
+    expectedDraftRevision: draft.revision,
+    prompt: "An uneasy reunion in a rain-soaked station at dusk.",
+  });
+
+  const node = updated.drafts[0].nodes[0];
+  assert.equal(node.spec.kind, "composition");
+  assert.equal(node.spec.role, "text");
+  assert.equal(node.spec.prompt, "An uneasy reunion in a rain-soaked station at dusk.");
+  assert.equal(node.specRevision, 2);
+  assert.equal(node.execution.status, "dirty");
 });
 
 test("shot updates recompute reverse-ordered dependency descendants topologically", () => {
