@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
+  getStraightPath,
   Handle,
   Position,
   ReactFlow,
@@ -43,7 +45,7 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
-import { NODE_WIDTH } from "./project-document.js";
+import { getNodeSize } from "./project-document.js";
 import {
   connectionToGraphMutation,
   findOpenNodePosition,
@@ -66,19 +68,6 @@ const CONTEXT_NODE_ROLES = new Set([
   "asset-library",
 ]);
 
-const NODE_PRESENTATION = Object.freeze({
-  text: { label: "文本", examples: ["撰写内容", "从文字生成视频", "从图片提取提示词", "从文字生成配乐"] },
-  image: { label: "图片", examples: ["以图生成图片", "提升清晰度"] },
-  video: { label: "视频", examples: ["延展视频", "用首尾帧生成", "用首帧生成"] },
-  "smart-edit": { label: "编辑", examples: ["导入片段", "整理节奏", "添加转场"] },
-  director: { label: "分镜", examples: ["拆解故事", "规划分镜", "组织镜头组"] },
-  "frame-analysis": { label: "镜头分析", examples: ["上传参考", "分析镜头", "提取节奏"] },
-  audio: { label: "音频", examples: ["生成配乐", "添加旁白", "设计环境音"] },
-  script: { label: "脚本", examples: ["撰写大纲", "扩展场景", "拆解镜头"] },
-  "asset-library": { label: "素材", examples: ["上传素材", "选择历史素材", "整理参考"] },
-  composition: { label: "剪辑", examples: ["组合上游镜头", "调整叙事顺序", "继续编辑片段"] },
-});
-
 function StatusIcon({ status }) {
   if (status === "succeeded") return <CheckCircle weight="fill" aria-hidden="true" />;
   if (status === "running") return <SpinnerGap className="spin" aria-hidden="true" />;
@@ -94,10 +83,6 @@ function getSurfaceKind(node) {
 
 function isContextNode(node) {
   return node.kind === "composition" && CONTEXT_NODE_ROLES.has(node.spec.role);
-}
-
-function nodePresentation(kind) {
-  return NODE_PRESENTATION[kind] ?? NODE_PRESENTATION.composition;
 }
 
 function SurfaceIcon({ kind }) {
@@ -132,34 +117,32 @@ function NodeMedia({ node, kind, onOpenPreview }) {
     return (
       <div className="node-media node-media-text" aria-label={`${node.title} ${node.statusMeta.label}`}>
         <TextAlignLeft weight="thin" aria-hidden="true" />
-        <p>{node.spec.prompt}</p>
       </div>
     );
   }
   if (asset && kind !== "text") {
     return (
-      <button
-        className="node-media node-media-asset nodrag"
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpenPreview(node, asset);
-        }}
-        aria-label={`打开 ${node.title} 的素材预览`}
-      >
+      <div className="node-media node-media-asset">
         <img src={asset.previewUrl} alt={`${node.title} 的生成画面`} draggable="false" />
         {kind === "video" ? <span className="node-play"><VideoCamera weight="fill" aria-hidden="true" /></span> : null}
-      </button>
+        <button
+          className="node-preview-button nodrag"
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenPreview(node, asset);
+          }}
+          aria-label={`打开 ${node.title} 的素材预览`}
+        >
+          <CornersOut aria-hidden="true" />
+        </button>
+      </div>
     );
   }
 
   return (
     <div className="node-media node-media-empty" aria-label={`${node.title} ${node.statusMeta.label}`}>
       <SurfaceIcon kind={kind} />
-      <div className="node-empty-examples" aria-hidden="true">
-        <span>尝试：</span>
-        {nodePresentation(kind).examples.map((example) => <small key={example}>{example}</small>)}
-      </div>
       {node.status !== "dirty" ? (
         <span className={`node-status-dot ${node.statusMeta.tone}`} title={node.statusMeta.label}>
           <StatusIcon status={node.status} />
@@ -192,6 +175,11 @@ function NodeComposer({ node, kind, onUpdatePrompt }) {
       aria-label={`${node.title} 参数`}
     >
       <form onSubmit={submitPrompt}>
+        <div className="composer-context-row" aria-hidden="true">
+          <span><Plus weight="bold" />参考</span>
+          <span><Paperclip />标记</span>
+          <span><Sparkle weight="fill" />风格</span>
+        </div>
         <div className="composer-input-row">
           <span className={`composer-type composer-type-${kind}`} aria-hidden="true"><NodeLabelIcon kind={kind} /></span>
           {canEditPrompt ? (
@@ -233,34 +221,68 @@ function NodeComposer({ node, kind, onUpdatePrompt }) {
 
 function CanvasHandle({ id, type, position, label }) {
   return (
+    <Handle
+      id={id}
+      className="canvas-handle"
+      type={type}
+      position={position}
+      role="button"
+      tabIndex={-1}
+      aria-label={label}
+    />
+  );
+}
+
+function NodeQuickActions({ kind, node }) {
+  if (kind !== "image" && kind !== "video") return null;
+  const actions = kind === "image"
+    ? ["质感", "镜头", "光线", "构图", "高清", "比例"]
+    : ["运动", "镜头", "光线", "节奏", "高清", "比例"];
+
+  return (
+    <div className="node-quick-actions nodrag nowheel" aria-label={`${node.title} 快捷配置`}>
+      <span className="quick-actions-kind"><NodeLabelIcon kind={kind} /></span>
+      {actions.map((action) => <span key={action}>{action}</span>)}
+      <span className="quick-actions-divider" />
+      <Sparkle weight="fill" aria-hidden="true" />
+      <CornersOut aria-hidden="true" />
+    </div>
+  );
+}
+
+function CanvasEdge({ id, sourceX, sourceY, targetX, targetY, className }) {
+  const [edgePath] = getStraightPath({ sourceX, sourceY, targetX, targetY });
+  const deltaX = targetX - sourceX;
+  const deltaY = targetY - sourceY;
+  const length = Math.hypot(deltaX, deltaY);
+  const indicatorLength = Math.min(34, length);
+  const indicatorX = length ? sourceX + (deltaX / length) * indicatorLength : sourceX;
+  const indicatorY = length ? sourceY + (deltaY / length) * indicatorLength : sourceY;
+  const indicatorPath = `M ${sourceX},${sourceY} L ${indicatorX},${indicatorY}`;
+  return (
     <>
-      <Handle
-        id={id}
-        className="canvas-handle"
-        type={type}
-        position={position}
-        role="button"
-        tabIndex={-1}
-        aria-label={label}
-      />
-      <span className={`node-handle-glyph node-handle-glyph-${position}`} aria-hidden="true">
-        <Plus weight="bold" />
-      </span>
+      <BaseEdge id={id} path={edgePath} className={className} />
+      <path className="canvas-edge-pulse" d={indicatorPath} aria-hidden="true" />
     </>
   );
 }
 
 function CanvasNode({ data, selected }) {
-  const { cardHeight, node, onOpenPreview, onFocusNode, onUpdatePrompt } = data;
+  const { nodeSize, node, onOpenPreview, onFocusNode, onUpdatePrompt } = data;
   const kind = getSurfaceKind(node);
   const isShot = node.kind === "shot";
 
   return (
     <article
       className={`canvas-node canvas-node-${kind} ${selected ? "selected" : ""}`}
-      style={{ height: `${cardHeight}px` }}
+      style={{
+        "--node-width": `${nodeSize.width}px`,
+        "--node-frame-height": `${nodeSize.frameHeight}px`,
+        height: `${nodeSize.height}px`,
+      }}
       data-node-id={node.id}
       data-node-kind={kind}
+      data-node-shape={nodeSize.shape}
       data-node-status={node.status}
     >
       {isShot ? (
@@ -278,6 +300,7 @@ function CanvasNode({ data, selected }) {
       <div className="node-label" aria-hidden="true">
         <NodeLabelIcon kind={kind} />
         <span>{node.title}</span>
+        {kind === "image" || kind === "video" ? <small>{node.spec.requirements?.aspectRatio ?? "16:9"}</small> : null}
       </div>
 
       <div
@@ -299,12 +322,14 @@ function CanvasNode({ data, selected }) {
         </span>
       </div>
 
+      {selected ? <NodeQuickActions kind={kind} node={node} /> : null}
       {selected ? <NodeComposer node={node} kind={kind} onUpdatePrompt={onUpdatePrompt} /> : null}
     </article>
   );
 }
 
 const NODE_TYPES = { creatorNode: CanvasNode };
+const EDGE_TYPES = { canvasEdge: CanvasEdge };
 
 function CanvasAddMenu({ open, onClose, onAddNode }) {
   if (!open) return null;
@@ -394,24 +419,13 @@ function EmptyCanvasGuide({ onAddNode }) {
 function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPreview, onMoveNode, onAddNode, onConnectNodes, onDeleteEdges, onUpdatePrompt, onArrange }) {
   const viewportRef = useRef(null);
   const isCompactViewport = window.innerWidth <= 700;
-  const fitMaxZoom = window.innerWidth <= 800 ? 0.37 : 0.5;
-  const { fitView, screenToFlowPosition, setCenter, zoomIn, zoomOut } = useReactFlow();
+  const fitMaxZoom = window.innerWidth <= 800 ? 0.37 : 0.64;
+  const { fitView, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
   const [tool, setTool] = useState("select");
   const [showEdges, setShowEdges] = useState(true);
   const [zoom, setZoom] = useState(1);
 
-  const focusNode = useCallback((nodeId) => {
-    const node = draft.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node) return;
-    onSelectNode(nodeId);
-    const viewport = viewportRef.current?.getBoundingClientRect();
-    if (!viewport || viewport.width === 0 || viewport.height === 0) return;
-    void setCenter(
-      node.position.x + NODE_WIDTH / 2,
-      node.position.y + 175,
-      { zoom: 1, duration: 240 },
-    );
-  }, [draft.nodes, onSelectNode, setCenter]);
+  const focusNode = useCallback((nodeId) => onSelectNode(nodeId), [onSelectNode]);
 
   const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt }), [focusNode, onOpenPreview, onUpdatePrompt]);
   const projectedNodes = useMemo(() => toFlowNodes(draft, selectedNodeId, nodeData), [draft, nodeData, selectedNodeId]);
@@ -447,8 +461,12 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
       x: (rect?.left ?? 0) + (rect?.width ?? window.innerWidth) / 2,
       y: (rect?.top ?? 0) + (rect?.height ?? window.innerHeight) / 2,
     });
-    const preferredPosition = { x: Math.round(center.x - NODE_WIDTH / 2), y: Math.round(center.y - 188) };
-    onAddNode(descriptor, findOpenNodePosition(draft, preferredPosition, descriptor.kind));
+    const size = getNodeSize(descriptor);
+    const preferredPosition = {
+      x: Math.round(center.x - size.width / 2),
+      y: Math.round(center.y - size.height / 2),
+    };
+    onAddNode(descriptor, findOpenNodePosition(draft, preferredPosition, descriptor));
   }, [draft, onAddNode, screenToFlowPosition]);
 
   return (
@@ -458,6 +476,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={handleNodesChange}
         onNodeClick={(_, node) => focusNode(node.id)}
         onNodeDragStart={(_, node) => onSelectNode(node.id)}

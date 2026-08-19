@@ -1,12 +1,9 @@
 import {
-  COMPOSITION_HEIGHT,
   getNodeHeight,
+  getNodeSize,
   NODE_HEIGHT,
   NODE_WIDTH,
 } from "./project-document.js";
-
-const PARAMETER_PANEL_WIDTH = NODE_WIDTH;
-const PARAMETER_PANEL_HEIGHT_WITH_GAP = 238;
 
 export const HANDLE_IDS = Object.freeze({
   sequenceSource: "sequence-source",
@@ -18,18 +15,21 @@ export const HANDLE_IDS = Object.freeze({
 export function toFlowNodes(draft, selectedNodeId, data = {}) {
   return draft.nodes.map((node) => {
     const selected = node.id === selectedNodeId;
-    const cardHeight = getNodeHeight(node);
+    const nodeSize = getNodeSize(node);
     return {
       id: node.id,
       type: "creatorNode",
       position: { ...node.position },
       selected,
       deletable: false,
-      width: selected ? PARAMETER_PANEL_WIDTH : NODE_WIDTH,
-      height: selected ? cardHeight + PARAMETER_PANEL_HEIGHT_WITH_GAP : cardHeight,
+      // The selected node's configuration surfaces intentionally overflow its
+      // visual card. Keeping the React Flow hitbox equal to the card prevents
+      // that overlay from swallowing clicks and drags on neighboring nodes.
+      width: nodeSize.width,
+      height: nodeSize.height,
       data: {
         ...data,
-        cardHeight,
+        nodeSize,
         node,
       },
     };
@@ -48,9 +48,9 @@ export function toFlowEdges(draft) {
         ? HANDLE_IDS.sequenceSource
         : HANDLE_IDS.dependencySource,
     targetHandle: edge.kind === "sequence" ? HANDLE_IDS.sequenceTarget : HANDLE_IDS.dependencyTarget,
-    // Both relationship types share the same curved visual grammar. Their
-    // semantic kind remains intact for validation and browser mutations.
-    type: "default",
+    // The visual connection is a direct source-right to target-left relation;
+    // semantic kinds remain intact for validation and document mutations.
+    type: "canvasEdge",
     className: `canvas-edge ${edge.kind}`,
     markerEnd: undefined,
     deletable: true,
@@ -67,13 +67,12 @@ function overlaps(left, right, gap = 36) {
   );
 }
 
-export function findOpenNodePosition(draft, preferredPosition, kind) {
-  const width = NODE_WIDTH;
-  const height = kind === "composition" ? COMPOSITION_HEIGHT : NODE_HEIGHT;
+export function findOpenNodePosition(draft, preferredPosition, descriptor) {
+  const { width, height } = getNodeSize(descriptor);
   const occupied = draft.nodes.map((node) => ({
     x: node.position.x,
     y: node.position.y,
-    width: NODE_WIDTH,
+    width: getNodeSize(node).width,
     height: getNodeHeight(node),
   }));
   const candidates = [{ x: 0, y: 0 }];
@@ -93,14 +92,14 @@ export function findOpenNodePosition(draft, preferredPosition, kind) {
   for (const offset of candidates) {
     const candidate = {
       x: Math.round(preferredPosition.x + offset.x * (NODE_WIDTH + 64)),
-      y: Math.round(preferredPosition.y + offset.y * (Math.max(NODE_HEIGHT, COMPOSITION_HEIGHT) + 64)),
+      y: Math.round(preferredPosition.y + offset.y * (NODE_HEIGHT + 64)),
     };
     const candidateRect = { ...candidate, width, height };
     if (!occupied.some((rect) => overlaps(candidateRect, rect))) return candidate;
   }
   return {
     x: Math.round(preferredPosition.x),
-    y: Math.round(preferredPosition.y + (occupied.length + 1) * (Math.max(NODE_HEIGHT, COMPOSITION_HEIGHT) + 64)),
+    y: Math.round(preferredPosition.y + (occupied.length + 1) * (NODE_HEIGHT + 64)),
   };
 }
 

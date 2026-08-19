@@ -3,8 +3,11 @@ import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
 import {
   COMPOSITION_HEIGHT,
   createPreviewModel,
+  getNodeSize,
   NODE_HEIGHT,
   NODE_WIDTH,
+  TEXT_NODE_HEIGHT,
+  TEXT_NODE_WIDTH,
 } from "../src/project-document.js";
 import {
   connectionToGraphMutation,
@@ -43,12 +46,37 @@ describe("React Flow projection", () => {
     expect(sequence).toMatchObject({
       sourceHandle: HANDLE_IDS.sequenceSource,
       targetHandle: HANDLE_IDS.sequenceTarget,
-      type: "default",
+      type: "canvasEdge",
     });
     expect(dependency).toMatchObject({
       sourceHandle: HANDLE_IDS.sequenceSource,
       targetHandle: HANDLE_IDS.dependencyTarget,
-      type: "default",
+      type: "canvasEdge",
+    });
+  });
+
+  it("uses wide media cards and square text cards without changing graph semantics", () => {
+    expect(getNodeSize({ kind: "shot", spec: { mediaKind: "image" } })).toMatchObject({
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+      shape: "wide",
+    });
+    expect(getNodeSize({ kind: "composition", spec: { role: "text" } })).toMatchObject({
+      width: TEXT_NODE_WIDTH,
+      height: TEXT_NODE_HEIGHT,
+      shape: "square",
+    });
+  });
+
+  it("keeps a selected node's React Flow hitbox equal to its visible card", () => {
+    const draft = activeDraft();
+    const selectedNodeId = draft.nodes[0].id;
+    const selected = toFlowNodes(draft, selectedNodeId).find((node) => node.id === selectedNodeId);
+
+    expect(selected).toMatchObject({
+      selected: true,
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
     });
   });
 

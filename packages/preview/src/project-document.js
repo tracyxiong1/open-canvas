@@ -1,9 +1,14 @@
 // The canvas uses a stable, medium-density world unit. Keeping these values
 // independent of rendered zoom lets the same document work in desktop and
 // compact studio viewports without changing canonical positions.
-export const NODE_WIDTH = 350;
-export const NODE_HEIGHT = 376;
-export const COMPOSITION_HEIGHT = 376;
+// Canvas coordinates describe the complete node, including its compact label
+// row. Media nodes intentionally use a 16:9 surface while text nodes retain a
+// square reading surface.
+export const NODE_WIDTH = 312;
+export const NODE_HEIGHT = 202;
+export const COMPOSITION_HEIGHT = 202;
+export const TEXT_NODE_WIDTH = 176;
+export const TEXT_NODE_HEIGHT = 202;
 
 export const STATUS_META = Object.freeze({
   dirty: { label: "待生成", tone: "pending" },
@@ -145,8 +150,35 @@ export function chooseInitialNode(draft) {
   return draft.nodes.find((node) => node.status !== "succeeded") ?? draft.nodes[0] ?? null;
 }
 
+export function getNodeSize(node) {
+  const kind = typeof node === "string" ? node : node?.kind ?? node?.spec?.kind;
+  const role = typeof node === "object" && node
+    ? node.role ?? node.spec?.role ?? null
+    : null;
+
+  if (kind === "composition" && role === "text") {
+    return {
+      width: TEXT_NODE_WIDTH,
+      height: TEXT_NODE_HEIGHT,
+      frameHeight: 176,
+      shape: "square",
+    };
+  }
+
+  return {
+    width: NODE_WIDTH,
+    height: kind === "composition" ? COMPOSITION_HEIGHT : NODE_HEIGHT,
+    frameHeight: 176,
+    shape: "wide",
+  };
+}
+
+export function getNodeWidth(node) {
+  return getNodeSize(node).width;
+}
+
 export function getNodeHeight(node) {
-  return node.kind === "composition" ? COMPOSITION_HEIGHT : NODE_HEIGHT;
+  return getNodeSize(node).height;
 }
 
 export function truncateIdentifier(value, head = 12, tail = 6) {
