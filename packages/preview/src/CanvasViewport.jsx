@@ -30,6 +30,7 @@ import {
   Cube,
   Cursor,
   DownloadSimple,
+  DotsThree,
   Eraser,
   FilmSlate,
   FileText,
@@ -49,8 +50,9 @@ import {
   MagnifyingGlassPlus,
   Minus,
   Mountains,
-  Panorama,
   Paperclip,
+  PaperPlaneTilt,
+  Panorama,
   PaintBrushBroad,
   Pause,
   PencilSimple,
@@ -65,7 +67,6 @@ import {
   Sparkle,
   SpinnerGap,
   Stack,
-  SunHorizon,
   Smiley,
   SlidersHorizontal,
   TextAlignLeft,
@@ -413,7 +414,7 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
     ? [
       { label: "全景", icon: Panorama, tooltip: "基于当前场景创建720°全景图" },
       { label: "多角度", icon: Atom, tooltip: "多角度" },
-      { label: "打光", icon: SunHorizon, tooltip: "打光" },
+      { label: "打光", icon: SlidersHorizontal, tooltip: "打光" },
       { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
       { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
       { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
@@ -421,7 +422,7 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
     : [
       { label: "运动", icon: Sparkle, tooltip: "运动控制" },
       { label: "多角度", icon: Atom, tooltip: "多角度" },
-      { label: "打光", icon: SunHorizon, tooltip: "打光" },
+      { label: "打光", icon: SlidersHorizontal, tooltip: "打光" },
       { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
       { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
       { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
@@ -1080,8 +1081,22 @@ function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoo
   );
 }
 
-function CanvasAssetManager({ open, draft, onClose, onSelectNode }) {
+function assetManagerNodeRank(node) {
+  const size = getNodeSize(node);
+  const kind = getSurfaceKind(node);
+  if (size.shape === "panorama") return 0;
+  if (node.kind === "shot" && kind === "image") return 1;
+  if (kind === "text") return 2;
+  if (node.kind === "composition" && kind === "image" && size.shape === "wide") return 3;
+  return 4;
+}
+
+function CanvasAssetManager({ open, draft, selectedNodeId, onClose, onFocusNode }) {
   if (!open) return null;
+  const orderedNodes = draft.nodes
+    .map((node, index) => ({ node, index }))
+    .sort((left, right) => assetManagerNodeRank(left.node) - assetManagerNodeRank(right.node) || left.index - right.index)
+    .map(({ node }) => node);
 
   return (
     <aside className="canvas-asset-manager" role="dialog" aria-modal="false" aria-labelledby="asset-manager-title" data-canvas-control>
@@ -1104,20 +1119,30 @@ function CanvasAssetManager({ open, draft, onClose, onSelectNode }) {
           <button type="button" aria-label="搜索资产"><MagnifyingGlassPlus aria-hidden="true" /></button>
         </header>
         <div className="asset-manager-list">
-          {draft.nodes.map((node) => {
+          {orderedNodes.map((node) => {
             const asset = node.outputAssets.find((item) => item.previewUrl);
             const kind = getSurfaceKind(node);
+            const active = node.id === selectedNodeId;
             return (
           <button
             key={node.id}
+            className={active ? "active" : ""}
             type="button"
-            onClick={() => { onSelectNode(node.id); onClose(); }}
+            onClick={(event) => {
+              onFocusNode(node.id);
+              if (event.detail !== 0) {
+                const button = event.currentTarget;
+                window.requestAnimationFrame(() => button.blur());
+              }
+            }}
             aria-label={`聚焦 ${node.title}`}
+            aria-pressed={active}
           >
             <span className={`asset-entry-preview asset-entry-preview-${kind}`}>
               {asset?.previewUrl ? <img src={asset.previewUrl} alt="" /> : <NodeLabelIcon kind={kind} />}
             </span>
             <strong>{node.title}</strong>
+            {active ? <span className="asset-entry-actions" aria-hidden="true"><DotsThree weight="bold" /><PaperPlaneTilt weight="regular" /></span> : null}
           </button>
             );
           })}
@@ -1131,7 +1156,7 @@ function CanvasAssetManager({ open, draft, onClose, onSelectNode }) {
   );
 }
 
-function CanvasAside({ draft, onSelectNode, assetManagerOpen, onAssetManagerChange, showEdges, onToggleEdges, snapToGrid, onToggleSnap, showMinimap, onToggleMinimap, zoom, onZoomIn, onZoomOut, onSetZoom, onFit, onArrange }) {
+function CanvasAside({ draft, selectedNodeId, onFocusNode, assetManagerOpen, onAssetManagerChange, showEdges, onToggleEdges, snapToGrid, onToggleSnap, showMinimap, onToggleMinimap, zoom, onZoomIn, onZoomOut, onSetZoom, onFit, onArrange }) {
   const [zoomOpen, setZoomOpen] = useState(false);
   const releasePointerFocus = (event) => {
     if (event.detail === 0) return;
@@ -1154,7 +1179,7 @@ function CanvasAside({ draft, onSelectNode, assetManagerOpen, onAssetManagerChan
           <ZoomOptions open={zoomOpen} zoom={zoom} onClose={() => setZoomOpen(false)} onFit={onFit} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onSetZoom={onSetZoom} />
         </>
       ) : null}
-      <CanvasAssetManager open={assetManagerOpen} draft={draft} onClose={() => onAssetManagerChange(false)} onSelectNode={onSelectNode} />
+      <CanvasAssetManager open={assetManagerOpen} draft={draft} selectedNodeId={selectedNodeId} onClose={() => onAssetManagerChange(false)} onFocusNode={onFocusNode} />
     </>
   );
 }
@@ -1194,7 +1219,30 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   }), []);
 
   const focusNode = useCallback((nodeId) => onSelectNode(nodeId), [onSelectNode]);
-  const quickActionMode = selectedNodeId ? quickActionModes[selectedNodeId] ?? null : null;
+  const focusNodeFromAssetManager = useCallback((nodeId) => {
+    const node = draft.nodes.find((item) => item.id === nodeId);
+    if (!node) return;
+    onSelectNode(nodeId);
+    const viewport = viewportRef.current;
+    const viewportRect = viewport?.getBoundingClientRect();
+    if (!viewportRect) return;
+    const sidebarWidth = viewport.querySelector(".canvas-asset-manager")?.getBoundingClientRect().width ?? 0;
+    const nodeSize = getNodeSize(node);
+    const nodeCenter = {
+      x: (node.position.x + nodeSize.width / 2) * CANVAS_PRESENTATION_SCALE,
+      y: (node.position.y + 25 + nodeSize.frameHeight / 2) * CANVAS_PRESENTATION_SCALE,
+    };
+    void setViewport({
+      x: (viewportRect.width - sidebarWidth) / 2 - nodeCenter.x,
+      y: viewportRect.height / 2 - nodeCenter.y,
+      zoom: 1,
+    }, { duration: 260 });
+  }, [draft.nodes, onSelectNode, setViewport]);
+  const selectedNode = useMemo(() => draft.nodes.find((node) => node.id === selectedNodeId) ?? null, [draft.nodes, selectedNodeId]);
+  const selectedNodeKind = selectedNode ? getSurfaceKind(selectedNode) : null;
+  const quickActionMode = selectedNodeId
+    ? quickActionModes[selectedNodeId] ?? (selectedNodeKind === "image" && selectedNode?.status === "succeeded" ? "portrait" : null)
+    : null;
   const setSelectedQuickActionMode = useCallback((mode) => {
     if (!selectedNodeId) return;
     setQuickActionModes((current) => ({ ...current, [selectedNodeId]: mode }));
@@ -1207,8 +1255,6 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   );
   const [nodes, setNodes, handleNodesChange] = useNodesState(projectedNodes);
   const edges = useMemo(() => showEdges ? toFlowEdges(draft, selectedNodeId) : [], [draft, selectedNodeId, showEdges]);
-  const selectedNode = useMemo(() => draft.nodes.find((node) => node.id === selectedNodeId) ?? null, [draft.nodes, selectedNodeId]);
-  const selectedNodeKind = selectedNode ? getSurfaceKind(selectedNode) : null;
 
   const syncQuickActionsPosition = useCallback(() => {
     const viewport = viewportRef.current;
@@ -1353,7 +1399,8 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
       {draft.nodes.length === 0 ? <EmptyCanvasGuide onAddNode={addAtViewportCenter} /> : null}
       <CanvasAside
         draft={draft}
-        onSelectNode={onSelectNode}
+        selectedNodeId={selectedNodeId}
+        onFocusNode={focusNodeFromAssetManager}
         assetManagerOpen={assetManagerOpen}
         onAssetManagerChange={setAssetManagerOpen}
         showEdges={showEdges}

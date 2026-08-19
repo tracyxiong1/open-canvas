@@ -101,7 +101,11 @@ describe("editable open canvas", () => {
     expect(screen.getByRole("button", { name: "适合屏幕" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "资产管理" }));
-    expect(screen.getByRole("dialog", { name: "资产管理" })).toBeInTheDocument();
+    const assetManager = screen.getByRole("dialog", { name: "资产管理" });
+    expect(assetManager).toBeInTheDocument();
+    await user.click(within(assetManager).getByRole("button", { name: /聚焦 Shot 1 — Arrival/ }));
+    expect(assetManager).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "画布" }));
     expect(screen.queryByRole("dialog", { name: "资产管理" })).not.toBeInTheDocument();
 
