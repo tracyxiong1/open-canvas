@@ -26,6 +26,11 @@
 - Text, image, video, and editing/composition surfaces must be visually
   distinguishable. Reference-product names, logos, imagery, model names, and
   wording remain excluded.
+- Selecting a canvas node must focus it in the viewport and open its inline
+  composer; do not preselect a node on initial load.
+- Keep the complete creative-node palette available from the compact bottom
+  add menu (text, image, video, editing, directing, analysis, audio, script,
+  asset-reference, upload, and generation-history entry points).
 
 ## Delivery
 

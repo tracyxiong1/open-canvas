@@ -18,6 +18,7 @@ import {
   Lightning,
   Play,
   ShareNetwork,
+  SquaresFour,
   Sparkle,
   WarningCircle,
   X,
@@ -25,9 +26,47 @@ import {
 import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
 import { CanvasViewport } from "./CanvasViewport.jsx";
 import { resolveDemoAssetUrl } from "./demo-assets.js";
-import { chooseInitialNode, createPreviewModel, truncateIdentifier } from "./project-document.js";
+import { createPreviewModel, truncateIdentifier } from "./project-document.js";
 
 const HISTORY_LIMIT = 50;
+
+const CONTEXT_NODE_PRESETS = Object.freeze({
+  text: {
+    label: "文本",
+    mediaType: "text/plain",
+    prompt: "写下这段创作的主题、情绪或叙事目标。",
+  },
+  "smart-edit": {
+    label: "编辑",
+    mediaType: "video/mp4",
+    prompt: "描述想保留的素材、叙事节奏与剪辑目标。",
+  },
+  director: {
+    label: "分镜",
+    mediaType: "application/json",
+    prompt: "定义故事节奏、场景拆分与镜头调度。",
+  },
+  "frame-analysis": {
+    label: "镜头分析",
+    mediaType: "application/json",
+    prompt: "分析参考视频的镜头、构图、动作与节奏。",
+  },
+  audio: {
+    label: "音频",
+    mediaType: "audio/mpeg",
+    prompt: "描述配乐、旁白、环境音或声音设计。",
+  },
+  script: {
+    label: "脚本",
+    mediaType: "text/plain",
+    prompt: "写下场景、角色、旁白与镜头节奏。",
+  },
+  "asset-library": {
+    label: "素材",
+    mediaType: "application/json",
+    prompt: "整理要引用的图片、视频、音频与参考素材。",
+  },
+});
 
 function buildModel(document, draftId) {
   return createPreviewModel(document, {
@@ -82,6 +121,11 @@ function ProjectHeader({
         <CaretDown className="project-caret" aria-hidden="true" />
       </div>
 
+      <div className="project-top-tools" aria-label="画布视图工具">
+        <button type="button" aria-label="查看画布关系" title="查看画布关系"><GitBranch aria-hidden="true" /></button>
+        <button type="button" aria-label="切换画布视图" title="切换画布视图"><SquaresFour aria-hidden="true" /></button>
+      </div>
+
       <div className="draft-control">
         <GitBranch aria-hidden="true" />
         <label htmlFor="draft-select">草稿</label>
@@ -116,7 +160,7 @@ function ProjectHeader({
       <div className="source-style-actions" aria-label="创作辅助工具">
         <button type="button" className="header-icon-action" aria-label="分享画布" title="分享画布"><ShareNetwork aria-hidden="true" /></button>
         <button type="button" className="header-credit-action" aria-label="创作额度"><Lightning weight="fill" aria-hidden="true" /><span>20</span></button>
-        <button type="button" className="header-agent-action" aria-label="打开创作 Agent"><Sparkle weight="fill" aria-hidden="true" /><span>Agent</span></button>
+        <button type="button" className="header-agent-action" aria-label="打开创作 AI"><Sparkle weight="fill" aria-hidden="true" /><span>AI</span></button>
       </div>
     </header>
   );
@@ -174,7 +218,7 @@ export function App({ initialDocument = exampleDocument }) {
   useEffect(() => {
     setSelectedNodeId((current) => {
       if (current && model.activeDraft.nodes.some((node) => node.id === current)) return current;
-      return chooseInitialNode(model.activeDraft)?.id ?? null;
+      return null;
     });
     setPreview(null);
   }, [model.activeDraft.id, model.activeDraft.nodes]);
@@ -279,16 +323,21 @@ export function App({ initialDocument = exampleDocument }) {
   const handleAddNode = useCallback((descriptor, position) => {
     const kind = typeof descriptor === "string" ? descriptor : descriptor.kind;
     const mediaKind = typeof descriptor === "string" ? "video" : descriptor.mediaKind ?? "video";
-    const presentation = typeof descriptor === "string" ? null : descriptor.presentation ?? null;
+    const legacyPresentation = typeof descriptor === "string" ? null : descriptor.presentation ?? null;
+    const role = typeof descriptor === "string"
+      ? null
+      : descriptor.role ?? (legacyPresentation === "text" ? "text" : legacyPresentation === "edit" ? "smart-edit" : null);
+    const contextPreset = role ? CONTEXT_NODE_PRESETS[role] : null;
     const draft = findCanonicalDraft(document, draftId);
-    const count = draft.nodes.filter((node) => node.spec.kind === kind).length + 1;
+    const count = draft.nodes.filter((node) => {
+      if (node.spec.kind !== kind) return false;
+      if (kind === "shot") return node.spec.mediaKind === mediaKind;
+      return (node.spec.role ?? "composition") === (role ?? "composition");
+    }).length + 1;
     const spec = kind === "composition" ? {
       kind: "composition",
-      mediaType: "video/mp4",
-      ...(presentation === "text" ? {
-        role: "text",
-        prompt: "写下这段创作的主题、情绪或叙事目标。",
-      } : {}),
+      mediaType: contextPreset?.mediaType ?? "video/mp4",
+      ...(contextPreset ? { role, prompt: contextPreset.prompt } : {}),
     } : {
       kind: "shot",
       prompt: "描述这个镜头的主体、动作、环境与镜头语言。",
@@ -302,10 +351,10 @@ export function App({ initialDocument = exampleDocument }) {
       },
     };
     const title = kind === "composition"
-      ? (presentation === "text" ? `文本 ${count}` : `剪辑 ${count}`)
+      ? `${contextPreset?.label ?? "剪辑"} ${count}`
       : `${mediaKind === "image" ? "图片" : "视频"} ${count}`;
     const addMessage = kind === "composition"
-      ? (presentation === "text" ? "已新增文本节点" : "已新增剪辑节点")
+      ? `已新增${contextPreset?.label ?? "剪辑"}节点`
       : `已新增${mediaKind === "image" ? "图片" : "视频"}节点`;
     runMutation(addMessage, (current) => addNode(current, {
       draftId,
@@ -324,7 +373,7 @@ export function App({ initialDocument = exampleDocument }) {
     const draft = findCanonicalDraft(document, draftId);
     if (draft.nodes.length === 0) return;
     const columns = Math.min(3, Math.max(1, draft.nodes.length));
-    const columnGap = 760;
+    const columnGap = 430;
     const rowGap = 520;
     runMutation("已整理画布", (current) => draft.nodes.reduce((next, node, index) => {
       const currentDraft = findCanonicalDraft(next, draftId);

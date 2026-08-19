@@ -35,6 +35,10 @@ function duplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
+function isContextComposition(node: Node): boolean {
+  return node.spec.kind === "composition" && node.spec.role !== undefined && node.spec.role !== "composition";
+}
+
 export function orderedCompositionDependencies(draft: Draft, compositionId: string): Node[] {
   const nodeById = new Map(draft.nodes.map((node) => [node.id, node]));
   const dependencyIds = draft.edges
@@ -181,9 +185,15 @@ function validateDraft(document: CanvasDocument, draft: Draft): void {
 
   for (const job of draft.jobs) {
     if (!nodes.has(job.nodeId)) throw new CanvasValidationError([`job ${job.id} references unknown node`]);
+    if (isContextComposition(nodes.get(job.nodeId)!)) {
+      throw new CanvasValidationError([`context node ${job.nodeId} cannot own a generation job`]);
+    }
     if (job.outputAssetIds.some((id) => !assets.has(id))) throw new CanvasValidationError([`job ${job.id} references unknown asset`]);
   }
   for (const node of draft.nodes) {
+    if (isContextComposition(node) && node.execution.status !== "dirty") {
+      throw new CanvasValidationError([`context node ${node.id} must stay dirty`]);
+    }
     if (node.execution.outputAssetIds.some((id) => !assets.has(id))) {
       throw new CanvasValidationError([`node ${node.id} references unknown output asset`]);
     }

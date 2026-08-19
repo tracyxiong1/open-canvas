@@ -32,6 +32,10 @@ function findNode(draft: Draft, nodeId: string): Node {
   return node;
 }
 
+function isContextNode(node: Node): boolean {
+  return node.spec.kind === "composition" && node.spec.role !== undefined && node.spec.role !== "composition";
+}
+
 function finish(document: CanvasDocument, draft: Draft, now: string): CanvasDocument {
   draft.revision += 1;
   draft.updatedAt = now;
@@ -138,8 +142,8 @@ export function startGeneration(
   if (node.execution.status !== "dirty" && node.execution.status !== "failed") {
     throw new Error(`Generation starts only from dirty or failed nodes: ${node.id}`);
   }
-  if (node.spec.kind === "composition" && node.spec.role === "text") {
-    throw new Error(`Text nodes are prompts, not generation jobs: ${node.id}`);
+  if (isContextNode(node)) {
+    throw new Error(`Context nodes are prompts, not generation jobs: ${node.id}`);
   }
   if (node.spec.kind === "composition") {
     const dependencies = draft.edges

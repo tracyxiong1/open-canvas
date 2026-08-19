@@ -20,6 +20,10 @@ export class RevisionConflictError extends Error {
 
 type NodeSpec = ShotSpec | CompositionSpec;
 
+function isEditableContextNode(node: Node): boolean {
+  return node.spec.kind === "composition" && node.spec.role !== undefined && node.spec.role !== "composition";
+}
+
 function id(prefix: "project" | "draft" | "node" | "edge" | "job"): string {
   return `${prefix}_${uuidv7()}`;
 }
@@ -198,11 +202,9 @@ export function updateNode(input: CanvasDocument, options: UpdateNodeOptions): C
   const { document, draft } = prepareMutation(input, options.draftId, options.expectedProjectRevision, options.expectedDraftRevision);
   const node = draft.nodes.find((candidate) => candidate.id === options.nodeId);
   if (!node) throw new Error(`Unknown node: ${options.nodeId}`);
-  const canUpdatePrompt = node.spec.kind === "shot" || (
-    node.spec.kind === "composition" && node.spec.role === "text"
-  );
+  const canUpdatePrompt = node.spec.kind === "shot" || isEditableContextNode(node);
   if (options.prompt !== undefined && !canUpdatePrompt) {
-    throw new Error("Prompt updates apply only to shot and text nodes");
+    throw new Error("Prompt updates apply only to shot and editable context nodes");
   }
   if (options.title !== undefined) node.title = options.title;
   if (options.position !== undefined) node.position = clone(options.position);

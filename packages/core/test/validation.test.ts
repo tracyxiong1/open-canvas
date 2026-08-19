@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-import { CanvasValidationError, parseCanvasDocument } from "../src/index.js";
+import {
+  CanvasValidationError,
+  addNode,
+  createProject,
+  parseCanvasDocument,
+} from "../src/index.js";
 
 const examples = [
   "../../../docs/examples/canvas-v1-three-shot.json",
@@ -34,11 +39,54 @@ test("rejects unknown fields and credential-shaped values", async () => {
   );
 });
 
-test("requires textual content for a text canvas node", async () => {
+test("requires prompt content for a canvas context node", async () => {
   const input = await loadExample();
   const composition = input.drafts[0].nodes.find((node: any) => node.spec.kind === "composition");
   composition.spec.role = "text";
   assert.throws(() => parseCanvasDocument(input), CanvasValidationError);
+});
+
+test("accepts all persisted canvas context roles", () => {
+  const contexts = [
+    ["text", "text/plain"],
+    ["smart-edit", "video/mp4"],
+    ["director", "application/json"],
+    ["frame-analysis", "application/json"],
+    ["audio", "audio/mpeg"],
+    ["script", "text/plain"],
+    ["asset-library", "application/json"],
+  ] as const;
+
+  for (const [role, mediaType] of contexts) {
+    const empty = createProject({ title: role });
+    const document = addNode(empty, {
+      draftId: empty.activeDraftId,
+      expectedProjectRevision: empty.revision,
+      expectedDraftRevision: empty.drafts[0].revision,
+      title: role,
+      spec: {
+        kind: "composition",
+        role,
+        mediaType,
+        prompt: `${role} prompt`,
+      },
+    });
+    assert.equal(parseCanvasDocument(document), document);
+  }
+});
+
+test("rejects persisted generation state for canvas context nodes", async () => {
+  const input = await loadExample();
+  const draft = input.drafts[0];
+  const composition = draft.nodes.find((node: any) => node.spec.kind === "composition");
+  composition.spec = {
+    kind: "composition",
+    role: "director",
+    mediaType: "application/json",
+    prompt: "Plan the scene.",
+  };
+  composition.execution.inputFingerprint = "sha256:" + "0".repeat(64);
+  assert.throws(() => parseCanvasDocument(input), /context node .*cannot own a generation job/);
 });
 
 test("rejects semantic cross-draft references and invalid asset identity", async () => {

@@ -290,12 +290,19 @@
           "const": "composition"
         },
         "mediaType": {
-          "const": "video/mp4"
+          "type": "string",
+          "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$"
         },
         "role": {
           "enum": [
             "composition",
-            "text"
+            "text",
+            "smart-edit",
+            "director",
+            "frame-analysis",
+            "audio",
+            "script",
+            "asset-library"
           ]
         },
         "prompt": {
@@ -308,7 +315,15 @@
           "if": {
             "properties": {
               "role": {
-                "const": "text"
+                "enum": [
+                  "text",
+                  "smart-edit",
+                  "director",
+                  "frame-analysis",
+                  "audio",
+                  "script",
+                  "asset-library"
+                ]
               }
             },
             "required": [

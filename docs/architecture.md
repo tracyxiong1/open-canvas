@@ -117,9 +117,10 @@ Each draft in version 1 has two node kinds:
 - `shot`: a generation request with a prompt, media kind, optional immutable
   asset inputs, normalized output requirements, and optional routing hints.
 - `composition`: an exported video assembled from dependency inputs in shot
-  sequence order. Its optional `role: "text"` variant is a durable canvas
-  prompt node: it stores creative intent, accepts incoming reference links,
-  and is editable in the studio, but never submits a generation job.
+  sequence order. Its optional context roles (`text`, `smart-edit`, `director`,
+  `frame-analysis`, `audio`, `script`, and `asset-library`) are durable canvas
+  prompt nodes: they store creative intent, accept incoming reference links,
+  and are editable in the studio, but never submit a generation job.
 
 Every node has presentation fields (`title`, `position`) and a `specRevision`.
 Changing only presentation fields increments the selected draft revision and
@@ -138,7 +139,7 @@ Edges are directed `sourceNodeId -> targetNodeId` and have distinct semantics:
 Edges and jobs cannot reference nodes from another draft. Duplicate `(kind,
 sourceNodeId, targetNodeId)` edges and self-edges are invalid.
 Dependency edges must be acyclic; v1 dependency edges terminate at a
-composition (including a text-role composition) and sequence edges connect
+composition (including a context-role composition) and sequence edges connect
 shots. For an exportable project, the
 shots feeding a composition must form one unambiguous sequence chain;
 disconnected or branching order is a validation error, not an invitation to
@@ -182,10 +183,12 @@ Historical jobs and assets are retained when superseded so the document can
 explain provenance. They are not current merely because they succeeded.
 Garbage collection and cancellation are outside MVP scope.
 
-A text-role composition stays `dirty`: it carries editable planning context
+A context-role composition stays `dirty`: it carries editable planning context
 rather than an output asset, and `startGeneration` rejects it explicitly. This
-keeps text on the same document and graph surface without fabricating a provider
-job or an output media artifact.
+keeps planning, editing, audio, script, and asset-reference surfaces on the
+same document and graph surface without fabricating a provider job or an output
+media artifact. Validation also forbids a context role from owning a historical
+generation job or a non-`dirty` execution state.
 
 ## Fingerprints and targeted invalidation
 

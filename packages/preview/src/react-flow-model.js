@@ -37,11 +37,16 @@ export function toFlowNodes(draft, selectedNodeId, data = {}) {
 }
 
 export function toFlowEdges(draft) {
+  const nodesById = new Map(draft.nodes.map((node) => [node.id, node]));
   return draft.edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
-    sourceHandle: edge.kind === "sequence" ? HANDLE_IDS.sequenceSource : HANDLE_IDS.dependencySource,
+    sourceHandle: edge.kind === "sequence"
+      ? HANDLE_IDS.sequenceSource
+      : nodesById.get(edge.sourceNodeId)?.kind === "shot"
+        ? HANDLE_IDS.sequenceSource
+        : HANDLE_IDS.dependencySource,
     targetHandle: edge.kind === "sequence" ? HANDLE_IDS.sequenceTarget : HANDLE_IDS.dependencyTarget,
     // Both relationship types share the same curved visual grammar. Their
     // semantic kind remains intact for validation and browser mutations.
@@ -134,10 +139,10 @@ export function connectionToGraphMutation(draft, connection) {
     kind = "sequence";
   }
   if (
-    connection.sourceHandle === HANDLE_IDS.dependencySource &&
     connection.targetHandle === HANDLE_IDS.dependencyTarget &&
-    source.kind === "shot" &&
-    target.kind === "composition"
+    target.kind === "composition" &&
+    ((source.kind === "shot" && connection.sourceHandle === HANDLE_IDS.sequenceSource) ||
+      (source.kind === "composition" && connection.sourceHandle === HANDLE_IDS.dependencySource))
   ) {
     kind = "dependency";
   }
