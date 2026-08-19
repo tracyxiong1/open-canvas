@@ -112,7 +112,7 @@ function ProjectHeader({
       <div className="project-identity">
         <div className="project-mark" aria-hidden="true"><FilmSlate weight="fill" /></div>
         <div className="project-copy">
-          <span className="project-kicker">Open Canvas</span>
+          <span className="project-kicker">工作区</span>
           <strong title={model.project.title}>
             <span className="project-name-full">{model.project.title}</span>
             <span className="project-name-compact">画布 1</span>
