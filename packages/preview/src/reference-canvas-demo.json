@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 12,
+  "revision": 14,
   "project": {
     "id": "project_019c8f55-9000-7000-8000-000000000000",
     "title": "创作画布",
@@ -12,18 +12,18 @@
     {
       "id": "draft_019c8f55-9001-7000-8000-000000000001",
       "title": "画布 1",
-      "revision": 12,
+      "revision": 14,
       "createdAt": "2026-08-19T12:00:00Z",
       "updatedAt": "2026-08-19T12:00:10Z",
       "nodes": [
-        {
-          "id": "node_019c8f55-9101-7000-8000-000000000001",
+      {
+        "id": "node_019c8f55-9101-7000-8000-000000000001",
           "title": "图片节点 2",
           "position": { "x": 145, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "shot",
-            "prompt": "测试素材：抽象蓝色圆形。",
+        "prompt": "测试素材：抽象蓝色圆形。",
             "mediaKind": "image",
             "inputAssetIds": [],
             "requirements": {
@@ -42,20 +42,20 @@
             ]
           }
         },
-        {
-          "id": "node_019c8f55-9102-7000-8000-000000000002",
+      {
+        "id": "node_019c8f55-9102-7000-8000-000000000002",
           "title": "文本节点 1",
           "position": { "x": 559, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "composition",
             "role": "text",
-            "prompt": "测试素材：抽象蓝色圆形。",
+        "prompt": "测试镜头：城市天际线，夜景。",
             "mediaType": "text/plain"
           },
           "execution": {
             "status": "dirty",
-            "inputFingerprint": "sha256:8f342bd061b63f1ff349758d93b70c3c3cc6570ce48d279f65f307f8f25b0132",
+          "inputFingerprint": "sha256:0eba6b367519e340368c57485e6e43d58670887565e88a0fc9fa4caf8ad52af9",
             "outputAssetIds": []
           }
         },
@@ -177,6 +177,40 @@
             "inputFingerprint": "sha256:fc81196f43818928fa9a6a6170acf8917368fbf751e1f5d03213b55bea9fa502",
             "outputAssetIds": []
           }
+        },
+        {
+          "id": "node_019c8f55-9110-7000-8000-000000000010",
+          "title": "高清",
+          "position": { "x": 916, "y": 200 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9111-7000-8000-000000000011",
+          "title": "高清",
+          "position": { "x": 959, "y": 0 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
         }
       ],
       "edges": [
@@ -227,6 +261,18 @@
           "kind": "dependency",
           "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
           "targetNodeId": "node_019c8f55-9109-7000-8000-000000000009"
+        },
+        {
+          "id": "edge_019c8f55-9309-7000-8000-000000000009",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9110-7000-8000-000000000010"
+        },
+        {
+          "id": "edge_019c8f55-9310-7000-8000-000000000010",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9111-7000-8000-000000000011"
         }
       ],
       "jobs": [

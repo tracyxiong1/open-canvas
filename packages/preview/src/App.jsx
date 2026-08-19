@@ -17,9 +17,12 @@ import {
   GitBranch,
   Lightning,
   Play,
+  Robot,
   ShareNetwork,
   SquaresFour,
   Sparkle,
+  Storefront,
+  TagChevron,
   UserCircle,
   WarningCircle,
   X,
@@ -162,11 +165,11 @@ function ProjectHeader({
 
       <div className="source-style-actions" aria-label="创作辅助工具">
         <button type="button" className="header-icon-action" aria-label="分享画布" title="分享画布"><ShareNetwork aria-hidden="true" /></button>
-        <button type="button" className="header-icon-action header-library-action" aria-label="创作工具" title="创作工具"><SquaresFour weight="fill" aria-hidden="true" /></button>
-        <button type="button" className="header-upgrade-action" aria-label="升级创作套餐" title="升级创作套餐"><Sparkle weight="fill" aria-hidden="true" /><span>升级创作</span><small>限时</small></button>
+        <button type="button" className="header-icon-action header-library-action" aria-label="创作工具" title="创作工具"><Storefront weight="fill" aria-hidden="true" /></button>
+        <button type="button" className="header-upgrade-action" aria-label="升级创作套餐" title="升级创作套餐"><TagChevron weight="fill" aria-hidden="true" /><span>升级创作</span><small>限时</small></button>
         <button type="button" className="header-credit-action" aria-label="创作额度"><Lightning weight="fill" aria-hidden="true" /><span>20</span></button>
         <button type="button" className="header-avatar-action" aria-label="账户"><UserCircle weight="fill" aria-hidden="true" /></button>
-        <button type="button" className="header-agent-action" aria-label="打开创作 AI"><Sparkle weight="fill" aria-hidden="true" /><span>Agent</span></button>
+        <button type="button" className="header-agent-action" aria-label="打开创作 AI"><Robot weight="fill" aria-hidden="true" /><span>Agent</span></button>
       </div>
     </header>
   );
