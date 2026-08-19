@@ -107,8 +107,11 @@ describe("editable open canvas", () => {
 
     const moveTool = within(toolbar).getByRole("button", { name: "移动" });
     await user.click(moveTool);
+    expect(screen.getByRole("menu", { name: "移动工具" })).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: /抓手工具/ }));
     expect(moveTool).toHaveAttribute("aria-pressed", "true");
     await user.click(moveTool);
+    await user.click(screen.getByRole("menuitem", { name: /^移动/ }));
     expect(moveTool).toHaveAttribute("aria-pressed", "false");
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
@@ -138,6 +141,30 @@ describe("editable open canvas", () => {
     await user.click(within(quickActions).getByRole("button", { name: "人像质感调节" }));
     const portraitMenu = screen.getByRole("menu", { name: "人像调节选项" });
     expect(within(portraitMenu).getByRole("menuitem", { name: "情绪调节" })).toBeInTheDocument();
+    expect(screen.getByText("聚焦")).toBeInTheDocument();
+    expect(screen.getByText("General image V2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "调整图像规格" })).toHaveTextContent(/^16:9 · (?:2K|高清) · 1张/);
+    expect(screen.getByLabelText("本次生成消耗 12 点")).toHaveTextContent("12");
+
+    await user.click(within(quickActions).getByRole("button", { name: "人像质感调节" }));
+    expect(screen.queryByRole("menu", { name: "人像调节选项" })).not.toBeInTheDocument();
+    expect(screen.getByText("聚焦")).toBeInTheDocument();
+    expect(screen.getByText("General image V2")).toBeInTheDocument();
+
+    await user.click(within(quickActions).getByRole("button", { name: "宫格切分" }));
+    const splitMenu = screen.getByRole("menu", { name: "宫格切分选项" });
+    for (const label of ["4宫格 (2×2)", "9宫格 (3×3)", "16宫格 (4×4)", "25宫格 (5×5)", "自定义"]) {
+      expect(within(splitMenu).getByRole("menuitem", { name: label })).toBeInTheDocument();
+    }
+    expect(within(splitMenu).getByRole("separator")).toBeInTheDocument();
+    expect(screen.getByText("聚焦")).toBeInTheDocument();
+    expect(screen.getByText("General image V2")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("region", { name: "Shot 1 — Arrival 参数" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ }));
+    expect(screen.getByText("聚焦")).toBeInTheDocument();
+    expect(screen.getByText("General image V2")).toBeInTheDocument();
   });
 
   it("offers the full creative-node palette and persists context nodes", async () => {

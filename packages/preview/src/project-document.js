@@ -9,6 +9,7 @@ export const NODE_HEIGHT = 201;
 export const COMPOSITION_HEIGHT = 201;
 export const TEXT_NODE_WIDTH = 175;
 export const TEXT_NODE_HEIGHT = 201;
+export const PANORAMA_NODE_WIDTH = 350;
 
 export const STATUS_META = Object.freeze({
   dirty: { label: "待生成", tone: "pending" },
@@ -155,6 +156,9 @@ export function getNodeSize(node) {
   const role = typeof node === "object" && node
     ? node.role ?? node.spec?.role ?? null
     : null;
+  const mediaType = typeof node === "object" && node
+    ? node.mediaType ?? node.spec?.mediaType ?? null
+    : null;
 
   if (kind === "composition" && role === "text") {
     return {
@@ -162,6 +166,17 @@ export function getNodeSize(node) {
       height: TEXT_NODE_HEIGHT,
       frameHeight: 175,
       shape: "square",
+    };
+  }
+
+  if (kind === "composition" && role === "composition" && mediaType?.startsWith("image/")) {
+    const panorama = typeof node === "object" && node?.title?.includes("全景");
+    const compactOperation = typeof node === "object" && node?.title === "高清";
+    return {
+      width: panorama ? PANORAMA_NODE_WIDTH : compactOperation ? TEXT_NODE_WIDTH : NODE_WIDTH,
+      height: NODE_HEIGHT,
+      frameHeight: 175,
+      shape: panorama ? "panorama" : compactOperation ? "square" : "wide",
     };
   }
 

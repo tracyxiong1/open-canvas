@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "revision": 5,
+  "revision": 12,
   "project": {
     "id": "project_019c8f55-9000-7000-8000-000000000000",
     "title": "创作画布",
     "createdAt": "2026-08-19T12:00:00Z",
-    "updatedAt": "2026-08-19T12:00:05Z"
+    "updatedAt": "2026-08-19T12:00:10Z"
   },
   "activeDraftId": "draft_019c8f55-9001-7000-8000-000000000001",
   "drafts": [
     {
       "id": "draft_019c8f55-9001-7000-8000-000000000001",
       "title": "画布 1",
-      "revision": 5,
+      "revision": 12,
       "createdAt": "2026-08-19T12:00:00Z",
-      "updatedAt": "2026-08-19T12:00:05Z",
+      "updatedAt": "2026-08-19T12:00:10Z",
       "nodes": [
         {
           "id": "node_019c8f55-9101-7000-8000-000000000001",
@@ -58,6 +58,125 @@
             "inputFingerprint": "sha256:8f342bd061b63f1ff349758d93b70c3c3cc6570ce48d279f65f307f8f25b0132",
             "outputAssetIds": []
           }
+        },
+        {
+          "id": "node_019c8f55-9103-7000-8000-000000000003",
+          "title": "高清",
+          "position": { "x": 516, "y": -400 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9104-7000-8000-000000000004",
+          "title": "720°全景图",
+          "position": { "x": 516, "y": -200 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "扩展为可环视的全景画面。",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:5f16f2b50c7ab98a07e3f3eadf12e5fcabf561f73f81da64fd2b7d8b56005e01",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9105-7000-8000-000000000005",
+          "title": "高清",
+          "position": { "x": 516, "y": 200 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9106-7000-8000-000000000006",
+          "title": "高清",
+          "position": { "x": 716, "y": 200 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9107-7000-8000-000000000007",
+          "title": "高清",
+          "position": { "x": 516, "y": 400 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9108-7000-8000-000000000008",
+          "title": "高清",
+          "position": { "x": 759, "y": 0 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "配置参数生成高清图像",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:14631b312f5080c67959355ae23c61c732153af2ea44851a151d453130d7ff92",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_019c8f55-9109-7000-8000-000000000009",
+          "title": "角色脸部三视图",
+          "position": { "x": 891, "y": -200 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "composition",
+            "prompt": "生成角色脸部三视图。",
+            "mediaType": "image/png"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:fc81196f43818928fa9a6a6170acf8917368fbf751e1f5d03213b55bea9fa502",
+            "outputAssetIds": []
+          }
         }
       ],
       "edges": [
@@ -66,6 +185,48 @@
           "kind": "dependency",
           "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
           "targetNodeId": "node_019c8f55-9102-7000-8000-000000000002"
+        },
+        {
+          "id": "edge_019c8f55-9302-7000-8000-000000000002",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9103-7000-8000-000000000003"
+        },
+        {
+          "id": "edge_019c8f55-9303-7000-8000-000000000003",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9104-7000-8000-000000000004"
+        },
+        {
+          "id": "edge_019c8f55-9304-7000-8000-000000000004",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9105-7000-8000-000000000005"
+        },
+        {
+          "id": "edge_019c8f55-9305-7000-8000-000000000005",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9106-7000-8000-000000000006"
+        },
+        {
+          "id": "edge_019c8f55-9306-7000-8000-000000000006",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9107-7000-8000-000000000007"
+        },
+        {
+          "id": "edge_019c8f55-9307-7000-8000-000000000007",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9108-7000-8000-000000000008"
+        },
+        {
+          "id": "edge_019c8f55-9308-7000-8000-000000000008",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9109-7000-8000-000000000009"
         }
       ],
       "jobs": [

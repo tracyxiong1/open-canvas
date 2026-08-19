@@ -4,7 +4,7 @@
 
 - **Source visual truth:** user-authorized live creative canvas, captured at 716 × 994 CSS px and 1× density.
 - **Implementation:** local preview captured at the same 716 × 994 CSS px and 1× density.
-- **States compared:** default canvas, selected image node, add-node menu, toolbox, library, role library, history, shortcuts, and asset sidebar.
+- **States compared:** default canvas, selected image node, full nine-node operation topology, active edge flow, portrait/grid-split menus, add-node menu, toolbox, library, role library, history, shortcuts, and asset sidebar.
 - **Evidence handling:** the raw audit captures remain local-only and are excluded from Git; no source artwork, session data, or branding is shipped.
 
 **Viewport and normalization**
@@ -18,7 +18,7 @@ The product keeps independent project labels, iconography, and an original gener
 
 ## Findings
 
-The current pass clears the source-verified visual mismatches in the selected-node, dock-overlay, shortcut-sheet, toolbox, zoom, add-menu, and contextual-menu states. It remains blocked on command execution rather than visual geometry: the non-destructive contextual menus now open and dismiss, but their generation/edit operations are not yet connected to an AI provider/job pipeline.
+The current pass clears the source-verified visual mismatches in the selected-node, nine-node topology, selection-driven edge flow, dock-overlay, shortcut-sheet, toolbox, zoom, add-menu, and contextual-menu states. It remains blocked on command execution rather than visual geometry: the non-destructive contextual menus now open and dismiss, but their generation/edit operations are not yet connected to an AI provider/job pipeline.
 
 - [P1] Contextual image commands do not yet execute a generation or editing job
   - **Location:** selected image node → **高清** / **九宫格** contextual menus.
@@ -55,6 +55,9 @@ The current pass clears the source-verified visual mismatches in the selected-no
 - Opened **添加节点** and created a **文本** node; the menu closed and the graph gained the new editable node.
 - Opened and closed the toolbox, library, role library, history, shortcut sheet, and tutorial surfaces; each has its own responsive geometry and dialog/menu semantics.
 - Opened and dismissed the selected-node **人像质感调节**, **高清** image-action, and **九宫格** storyboard-preset menus. All preserve keyboard semantics, pointer focus behavior, and measured narrow-viewport anchoring.
+- Opened **宫格切分** and verified its five rows, separator, 150 × 225.25 px inner menu, and persistent node editing mode after switching menus or reselecting the node.
+- Panned across the full operation graph and verified the central image, text node, five compact enhancement nodes, panoramic node, role-view node, and eight fan-out edges against the same live viewport coordinates.
+- Selected and deselected the central image node and verified all adjacent edges switch between the neutral 2 px line and three-segment flowing highlight state.
 - Toggled the role-library “recent” checkbox; it updated without dismissing the dialog.
 - Rechecked the history modal’s panel, navigation, date, thumbnail, and empty-state bounds in the same 716 × 994 viewport.
 - Verified edge, minimap, snap, zoom, pan, asset-manager, add-menu, prompt, and dock-surface flows in the preview test suite.
@@ -89,6 +92,14 @@ The current pass clears the source-verified visual mismatches in the selected-no
    - **Fix:** moved the selected quick bar into a high-layer portal, added the measured **人像质感调节**, **高清**, and **九宫格** submenus, removed pointer-only focus rings, and reduced the connection-plus glyph to the measured 3.5 px displayed size while preserving its 40 px hit target and hover position.
    - **Post-fix result:** `150-reference-local-selected-handle-final.png`, `155-reference-local-hd-menu-icons-comparison.png`, `158-reference-local-nine-grid-menu-comparison.png`, and `163-reference-local-portrait-menu-comparison.png` show matching anchors, menu density, connector geometry, and active states apart from intentional independent artwork and icon silhouettes.
 
+8. **P1 — menu state and the inline composer were incorrectly coupled.**
+   - **Fix:** separated persistent per-node editing mode from transient popover state, added the measured five-item grid-split menu, and preserved the selected mode through menu switches and node reselection.
+   - **Post-fix result:** `10-comparison-grid-split.png` and `11-comparison-grid-persistent-mode.png` show matching menu geometry and composer controls in the same state.
+
+9. **P1 — the fixture exposed only the central image and text nodes, so the graph density and edge behavior did not match the reference.**
+   - **Fix:** added the complete independently authored nine-node demo topology, measured compact/panorama/wide operation sizes, selection-driven fan-out edge flow, the text-node status marker, and the 12-point generation indicator.
+   - **Post-fix result:** `14-comparison-selected-detail.png` and `15-comparison-full-topology.png` verify the selected and full-graph states at the same viewport; node bounds differ only by subpixel rounding.
+
 ## Implementation checklist
 
 - [x] Source and implementation captured in the same selected-node canvas state at 716 × 994 CSS px and 1× density.
@@ -96,7 +107,7 @@ The current pass clears the source-verified visual mismatches in the selected-no
 - [x] Default fixture validates through the canonical canvas schema and fingerprint checks.
 - [x] Browser-level drag, selection, asset management, node creation, role filtering, history, and dock-surface flows exercised.
 - [x] Revised shortcut sheet, toolbox, zoom, add menu, connector, and contextual menus re-captured at 716 × 994 and compared side by side.
-- [x] `npm test --workspace @open-canvas/preview` passed: 20 tests.
+- [x] `npm test --workspace @open-canvas/preview` passed: 21 tests.
 - [x] `npm run check` and `npm run build --workspace @open-canvas/preview` passed after the current connector/menu refinement.
 - [ ] Bind contextual menu selections to the provider-neutral job pipeline, then repeat an end-to-end generated-asset state review.
 

@@ -391,31 +391,46 @@ textarea:focus-visible,
 
 .react-flow__edge.canvas-edge .react-flow__edge-path {
   fill: none;
-  stroke: var(--canvas-edge);
-  stroke-linecap: round;
-  stroke-width: 1.25;
-  vector-effect: non-scaling-stroke;
+  stroke: #86909c;
+  stroke-linecap: butt;
+  stroke-width: 2;
 }
 
 .react-flow__edge.canvas-edge.sequence .react-flow__edge-path { opacity: .92; }
 .react-flow__edge.canvas-edge.dependency .react-flow__edge-path {
-  stroke: #69717b;
+  stroke: #86909c;
 }
+
+.react-flow__edge.canvas-edge.active .react-flow__edge-path { stroke: #c0c8d0; }
 
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.75;
 }
 
-.canvas-edge-pulse {
+.canvas-edge-flow {
+  --flow-offset: 0;
   fill: none;
-  stroke: #4fa9f7;
-  stroke-width: 1.5;
+  stroke: rgb(100 180 255 / 90%);
+  stroke-width: 4;
   stroke-linecap: round;
-  stroke-dasharray: 10 14;
-  opacity: .82;
+  stroke-dasharray: 11 89;
+  stroke-dashoffset: var(--flow-offset);
+  filter: drop-shadow(0 0 4px rgb(100 180 255 / 45%)) drop-shadow(0 0 1.5px rgb(150 210 255 / 70%));
   pointer-events: none;
-  vector-effect: non-scaling-stroke;
+  animation: canvas-edge-flow 2.8s linear infinite;
+}
+
+.canvas-edge-flow[data-flow-index="1"] { --flow-offset: -33; }
+.canvas-edge-flow[data-flow-index="2"] { --flow-offset: -66; }
+
+@keyframes canvas-edge-flow {
+  from { stroke-dashoffset: var(--flow-offset); }
+  to { stroke-dashoffset: calc(var(--flow-offset) - 100); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-edge-flow { animation: none; }
 }
 
 .react-flow__connection-path {
@@ -468,6 +483,20 @@ textarea:focus-visible,
 .node-label svg { width: 14px; height: 14px; color: #919191; }
 .node-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node-label small { margin-left: auto; color: #858585; font-size: 10px; font-weight: 500; }
+.node-label .node-label-info {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  margin-left: auto;
+  padding: 0;
+  place-items: center;
+  color: #a8a8a8;
+  background: transparent;
+  border-radius: 50%;
+  pointer-events: auto;
+}
+.node-label .node-label-info svg { width: 14px; height: 14px; color: currentColor; }
 .node-frame {
   position: relative;
   width: var(--node-width);
@@ -501,6 +530,22 @@ textarea:focus-visible,
 .node-media-empty { padding: 0; }
 .node-media-empty > svg { width: 48px; height: 48px; color: #676767; }
 
+.node-media-operation {
+  padding: 12px;
+  color: #919191;
+  background: #262626;
+}
+
+.node-media-operation > span {
+  max-width: 120px;
+  color: #919191;
+  font-size: 7px;
+  line-height: 10px;
+  text-align: center;
+}
+
+.node-media-operation > svg { width: 45px; height: 45px; color: #525252; }
+
 .node-media-text {
   display: flex;
   align-items: center;
@@ -509,7 +554,7 @@ textarea:focus-visible,
   color: #6e6e6e;
 }
 
-.node-media-text > svg { width: 51px; height: 51px; flex: 0 0 auto; }
+.node-media-text > svg { width: 45px; height: 45px; flex: 0 0 auto; color: #525252; }
 
 .node-preview-button {
   position: absolute;
@@ -628,20 +673,32 @@ textarea:focus-visible,
   flex: none;
   transform: translateX(var(--canvas-handle-translate-x)) scale(var(--canvas-handle-scale));
   transform-origin: center;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 120ms ease;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease, transform 300ms ease;
 }
 
 .canvas-handle-visual svg { width: 7px; height: 7px; stroke-width: 1.5px; }
-.canvas-handle-hit-area-left .canvas-handle-visual { --canvas-handle-translate-x: 25px; }
-.canvas-handle-hit-area-right .canvas-handle-visual { --canvas-handle-translate-x: -25px; }
+.canvas-handle-hit-area-left .canvas-handle-visual { --canvas-handle-translate-x: 26px; }
+.canvas-handle-hit-area-right .canvas-handle-visual { --canvas-handle-translate-x: -26px; }
 
 .react-flow__node:has(.react-flow__handle.canvas-handle:hover) .canvas-handle-visual,
 .react-flow__node:has(.react-flow__handle.canvas-handle.connectingfrom) .canvas-handle-visual,
 .react-flow__node:has(.react-flow__handle.canvas-handle.connectingto) .canvas-handle-visual {
-  color: var(--accent);
-  background: #263746;
-  border-color: var(--accent);
-  --canvas-handle-scale: 1.08;
+  color: rgb(255 255 255 / 70%);
+  background: rgb(30 30 30 / 90%);
+  border-color: rgb(255 255 255 / 70%);
+  --canvas-handle-scale: 1.1;
+}
+
+.react-flow__node:has(.react-flow__handle-left.canvas-handle:hover) .canvas-handle-hit-area-left .canvas-handle-visual,
+.react-flow__node:has(.react-flow__handle-left.canvas-handle.connectingfrom) .canvas-handle-hit-area-left .canvas-handle-visual,
+.react-flow__node:has(.react-flow__handle-left.canvas-handle.connectingto) .canvas-handle-hit-area-left .canvas-handle-visual {
+  --canvas-handle-translate-x: 13.3px;
+}
+
+.react-flow__node:has(.react-flow__handle-right.canvas-handle:hover) .canvas-handle-hit-area-right .canvas-handle-visual,
+.react-flow__node:has(.react-flow__handle-right.canvas-handle.connectingfrom) .canvas-handle-hit-area-right .canvas-handle-visual,
+.react-flow__node:has(.react-flow__handle-right.canvas-handle.connectingto) .canvas-handle-hit-area-right .canvas-handle-visual {
+  --canvas-handle-translate-x: -13.3px;
 }
 
 .node-quick-actions {
@@ -760,6 +817,25 @@ textarea:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.quick-action-submenu-split { width: 150px; }
+.quick-action-submenu-split .quick-action-submenu-inner {
+  padding: 6px;
+  gap: 2px;
+}
+.node-quick-actions .quick-action-submenu-split button {
+  width: 136px;
+  height: 39.25px;
+  padding: 10px 12px;
+  gap: 0;
+  font-size: 14px;
+  line-height: 19.25px;
+}
+.quick-action-menu-separator {
+  height: 1px;
+  margin: 2px 8px;
+  flex: 0 0 auto;
+  background: #525252;
 }
 .quick-action-submenu-portrait { width: 178px; }
 .quick-action-submenu-portrait .quick-action-submenu-inner {
@@ -907,17 +983,17 @@ textarea:focus-visible,
 .composer-context-row {
   display: flex;
   min-height: 32px;
-  padding: 5px 8px 3px;
+  padding: 4px 4px 2px;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: #9f9f9f;
   font-size: 10px;
 }
 
 .composer-context-row span {
   display: inline-flex;
-  height: 24px;
-  padding: 0 7px;
+  height: 26px;
+  padding: 0 9.5px;
   align-items: center;
   gap: 3px;
   background: #2f2f2f;
@@ -1021,13 +1097,17 @@ textarea:focus-visible,
 .composer-divider { width: 1px; height: 14px; margin: 0; background: #525252; }
 .composer-chip { color: #9c9c9c !important; font-size: 9px; }
 .composer-spacer { flex: 1; }
-.composer-state { display: grid; width: 32px; height: 32px; place-items: center; }
-.composer-state svg { width: 13px; height: 13px; }
-.composer-state.success { color: var(--success); }
-.composer-state.pending { color: var(--warning); }
-.composer-state.queued { color: var(--queued); }
-.composer-state.running { color: var(--accent); }
-.composer-state.danger { color: var(--danger); }
+.composer-cost {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  gap: 2px;
+  color: #919191;
+}
+
+.composer-cost > svg { width: 10px; height: 14px; flex: 0 0 auto; }
+.composer-cost > span { min-width: 20px; color: #919191; font-size: 12px; font-weight: 400; line-height: 15px; text-align: center; }
 
 .composer-submit { width: 32px; min-width: 32px !important; color: #171717 !important; background: #ededed !important; border-radius: 12px !important; }
 .composer-submit:hover:not(:disabled) { background: #fff !important; }
@@ -1049,9 +1129,29 @@ textarea:focus-visible,
 
 .composer-provider { min-width: 113px !important; }
 .composer-settings { min-width: 225px !important; }
-.composer-provider svg:first-child { width: 16px; height: 16px; }
-.composer-provider svg:last-child,
-.composer-settings svg { width: 14px; height: 14px; color: #919191; transform: rotate(90deg); }
+.node-composer-media.portrait-mode .composer-provider {
+  width: 159px;
+  min-width: 159px !important;
+  max-width: 159px;
+}
+.node-composer-media.portrait-mode .composer-settings {
+  width: 154px;
+  min-width: 154px !important;
+  max-width: 154px;
+}
+.composer-provider > svg:first-child { width: 16px; height: 16px; flex: 0 0 16px; }
+.composer-settings > svg:first-child {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  color: #f7f7f7;
+}
+.composer-provider > svg:last-child,
+.composer-settings > svg:last-child { width: 14px; height: 14px; flex: 0 0 14px; color: #919191; transform: rotate(90deg); }
+.composer-provider > span,
+.composer-settings > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.node-composer-media.portrait-mode .composer-provider > span { font-family: Arial, sans-serif; }
+.node-composer-media.portrait-mode .composer-settings > span { letter-spacing: .66px; }
 .composer-utility { width: 32px; padding: 0 !important; }
 .composer-utility svg { width: 16px; height: 16px; }
 .composer-preset { position: relative; }
@@ -1210,6 +1310,69 @@ textarea:focus-visible,
 .canvas-dock .dock-add:hover,
 .canvas-dock .dock-add.active { color: #202020; background: #fff; }
 .dock-divider { width: 1px; height: 20px; margin: 0 0; background: #363636; }
+
+.dock-tool-anchor {
+  position: relative;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+}
+
+.dock-tool-menu {
+  position: absolute;
+  bottom: 53px;
+  left: 50%;
+  z-index: 40;
+  box-sizing: border-box;
+  display: flex;
+  width: 168px;
+  padding: 4px;
+  flex-direction: column;
+  gap: 4px;
+  color: #f7f7f7;
+  background: #262626;
+  border: 1px solid #363636;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 25%), 0 2px 4px rgb(0 0 0 / 30%);
+  transform: translateX(-50%);
+}
+
+.dock-tool-menu::after {
+  position: absolute;
+  bottom: -6px;
+  left: 78px;
+  width: 10px;
+  height: 10px;
+  content: "";
+  background: #262626;
+  border-right: 1px solid #363636;
+  border-bottom: 1px solid #363636;
+  transform: rotate(45deg);
+}
+
+.canvas-dock .dock-tool-menu > button {
+  z-index: 1;
+  display: flex;
+  width: 158px;
+  height: 36.14px;
+  padding: 8px 12px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: #f7f7f7;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20.14px;
+}
+
+.canvas-dock .dock-tool-menu > button.active,
+.canvas-dock .dock-tool-menu > button:hover { background: rgb(255 255 255 / 15%); }
+.canvas-dock .dock-tool-menu > button > svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.canvas-dock .dock-tool-menu > button > span { min-width: 0; flex: 1; text-align: left; }
+.canvas-dock .dock-tool-menu kbd { color: #919191; font: inherit; }
 
 .canvas-add-menu {
   bottom: 71px;
