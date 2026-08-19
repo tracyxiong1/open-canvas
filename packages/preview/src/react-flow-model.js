@@ -51,7 +51,7 @@ export function toFlowNodes(draft, selectedNodeId, data = {}, presentationScale 
   });
 }
 
-export function toFlowEdges(draft) {
+export function toFlowEdges(draft, selectedNodeId = null) {
   const nodesById = new Map(draft.nodes.map((node) => [node.id, node]));
   return draft.edges.map((edge) => ({
     id: edge.id,
@@ -66,7 +66,7 @@ export function toFlowEdges(draft) {
     // The visual connection is a direct source-right to target-left relation;
     // semantic kinds remain intact for validation and document mutations.
     type: "canvasEdge",
-    className: `canvas-edge ${edge.kind}`,
+    className: `canvas-edge ${edge.kind}${edge.sourceNodeId === selectedNodeId || edge.targetNodeId === selectedNodeId ? " active" : ""}`,
     markerEnd: undefined,
     deletable: true,
     data: { kind: edge.kind },

@@ -4,11 +4,11 @@
 // Canvas coordinates describe the complete node, including its compact label
 // row. Media nodes intentionally use a 16:9 surface while text nodes retain a
 // square reading surface.
-export const NODE_WIDTH = 312;
-export const NODE_HEIGHT = 202;
-export const COMPOSITION_HEIGHT = 202;
-export const TEXT_NODE_WIDTH = 176;
-export const TEXT_NODE_HEIGHT = 202;
+export const NODE_WIDTH = 311;
+export const NODE_HEIGHT = 201;
+export const COMPOSITION_HEIGHT = 201;
+export const TEXT_NODE_WIDTH = 175;
+export const TEXT_NODE_HEIGHT = 201;
 
 export const STATUS_META = Object.freeze({
   dirty: { label: "待生成", tone: "pending" },
@@ -160,7 +160,7 @@ export function getNodeSize(node) {
     return {
       width: TEXT_NODE_WIDTH,
       height: TEXT_NODE_HEIGHT,
-      frameHeight: 176,
+      frameHeight: 175,
       shape: "square",
     };
   }
@@ -168,7 +168,7 @@ export function getNodeSize(node) {
   return {
     width: NODE_WIDTH,
     height: kind === "composition" ? COMPOSITION_HEIGHT : NODE_HEIGHT,
-    frameHeight: 176,
+    frameHeight: 175,
     shape: "wide",
   };
 }
