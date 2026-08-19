@@ -7,6 +7,8 @@ const DEMO_ASSET_URLS = Object.freeze({
     "/assets/shot-signal.webp",
   asset_sha256_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd:
     "/assets/shot-signal.webp",
+  asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8:
+    "/assets/reference-blue-orbit-v2.png",
 });
 
 /**

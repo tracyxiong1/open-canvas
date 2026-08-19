@@ -5,6 +5,7 @@ import {
   BaseEdge,
   getStraightPath,
   Handle,
+  MiniMap,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -13,27 +14,34 @@ import {
 } from "@xyflow/react";
 import {
   ArrowUp,
+  ArrowsOutSimple,
+  BezierCurve,
   CaretRight,
   CheckCircle,
   Clock,
   CornersOut,
+  Crosshair,
   Cursor,
+  DownloadSimple,
   FilmSlate,
   FileText,
   FolderSimple,
+  GridFour,
   GitBranch,
-  Hand,
+  HighDefinition,
   ImageSquare,
   Keyboard,
-  LinkSimple,
-  List,
+  Magnet,
+  MapTrifold,
   MagnifyingGlassMinus,
   MagnifyingGlassPlus,
   Paperclip,
+  PaintBrush,
   Pause,
   Plus,
   Question,
   Scissors,
+  Shapes,
   SpeakerHigh,
   Sparkle,
   SpinnerGap,
@@ -41,6 +49,8 @@ import {
   TextAlignLeft,
   TextT,
   UploadSimple,
+  UserCircle,
+  UsersThree,
   VideoCamera,
   WarningCircle,
   X,
@@ -48,6 +58,7 @@ import {
 import { getNodeSize } from "./project-document.js";
 import {
   connectionToGraphMutation,
+  CANVAS_PRESENTATION_SCALE,
   findOpenNodePosition,
   HANDLE_IDS,
   toFlowEdges,
@@ -57,6 +68,7 @@ import {
 const MIN_ZOOM = 0.32;
 const MAX_ZOOM = 1.8;
 const FIT_VIEW_PADDING = { top: "106px", right: "14px", bottom: "132px", left: "14px" };
+const DEFAULT_CANVAS_ZOOM = 0.5;
 
 const CONTEXT_NODE_ROLES = new Set([
   "text",
@@ -236,16 +248,43 @@ function CanvasHandle({ id, type, position, label }) {
 function NodeQuickActions({ kind, node }) {
   if (kind !== "image" && kind !== "video") return null;
   const actions = kind === "image"
-    ? ["质感", "镜头", "光线", "构图", "高清", "比例"]
-    : ["运动", "镜头", "光线", "节奏", "高清", "比例"];
+    ? [
+      { label: "全景", icon: CornersOut },
+      { label: "多角度", icon: Crosshair },
+      { label: "打光", icon: Sparkle },
+      { label: "九宫格", icon: GridFour, caret: true },
+      { label: "高清", icon: HighDefinition, caret: true },
+      { label: "宫格切分", icon: GridFour, caret: true },
+    ]
+    : [
+      { label: "运动", icon: Sparkle },
+      { label: "多角度", icon: Crosshair },
+      { label: "打光", icon: Sparkle },
+      { label: "九宫格", icon: GridFour, caret: true },
+      { label: "高清", icon: HighDefinition, caret: true },
+      { label: "宫格切分", icon: GridFour, caret: true },
+    ];
 
   return (
     <div className="node-quick-actions nodrag nowheel" aria-label={`${node.title} 快捷配置`}>
-      <span className="quick-actions-kind"><NodeLabelIcon kind={kind} /></span>
-      {actions.map((action) => <span key={action}>{action}</span>)}
+      <button className="quick-person-action" type="button" aria-label="人像质感调节" title="人像质感调节">
+        <UserCircle weight="regular" aria-hidden="true" />
+        <span>人像质感调节</span>
+        <em>NEW</em>
+        <CaretRight className="quick-caret" weight="bold" aria-hidden="true" />
+      </button>
+      {actions.map(({ label, icon: Icon, caret }) => (
+        <button className="quick-action" key={label} type="button" aria-label={label} title={label}>
+          <Icon weight="regular" aria-hidden="true" />
+          <span>{label}</span>
+          {caret ? <CaretRight className="quick-caret" weight="bold" aria-hidden="true" /> : null}
+        </button>
+      ))}
       <span className="quick-actions-divider" />
-      <Sparkle weight="fill" aria-hidden="true" />
-      <CornersOut aria-hidden="true" />
+      <button type="button" aria-label="画笔编辑" title="画笔编辑"><PaintBrush aria-hidden="true" /></button>
+      <button type="button" aria-label="定位主体" title="定位主体"><Crosshair aria-hidden="true" /></button>
+      <button type="button" aria-label="下载素材" title="下载素材"><DownloadSimple aria-hidden="true" /></button>
+      <button type="button" aria-label="打开素材预览" title="打开素材预览"><ArrowsOutSimple aria-hidden="true" /></button>
     </div>
   );
 }
@@ -268,9 +307,21 @@ function CanvasEdge({ id, sourceX, sourceY, targetX, targetY, className }) {
 }
 
 function CanvasNode({ data, selected }) {
-  const { nodeSize, node, onOpenPreview, onFocusNode, onUpdatePrompt } = data;
+  const {
+    nodeSize,
+    flowNodeSize = nodeSize,
+    presentationScale = 1,
+    node,
+    onOpenPreview,
+    onFocusNode,
+    onUpdatePrompt,
+  } = data;
   const kind = getSurfaceKind(node);
   const isShot = node.kind === "shot";
+  const requirements = node.spec.requirements ?? {};
+  const resolutionLabel = kind === "image" && requirements.width && requirements.height
+    ? `${requirements.width} × ${requirements.height}`
+    : requirements.aspectRatio ?? "16:9";
 
   return (
     <article
@@ -278,7 +329,10 @@ function CanvasNode({ data, selected }) {
       style={{
         "--node-width": `${nodeSize.width}px`,
         "--node-frame-height": `${nodeSize.frameHeight}px`,
-        height: `${nodeSize.height}px`,
+        "--node-height": `${nodeSize.height}px`,
+        "--node-display-scale": presentationScale,
+        width: `${flowNodeSize.width}px`,
+        height: `${flowNodeSize.height}px`,
       }}
       data-node-id={node.id}
       data-node-kind={kind}
@@ -297,33 +351,35 @@ function CanvasNode({ data, selected }) {
         </>
       )}
 
-      <div className="node-label" aria-hidden="true">
-        <NodeLabelIcon kind={kind} />
-        <span>{node.title}</span>
-        {kind === "image" || kind === "video" ? <small>{node.spec.requirements?.aspectRatio ?? "16:9"}</small> : null}
-      </div>
+      <div className="canvas-node-content">
+        <div className="node-label" aria-hidden="true">
+          <NodeLabelIcon kind={kind} />
+          <span>{node.title}</span>
+          {kind === "image" || kind === "video" ? <small>{resolutionLabel}</small> : null}
+        </div>
 
-      <div
-        className="node-frame"
-        role="button"
-        tabIndex="0"
-        aria-pressed={selected}
-        aria-label={`${node.title}，${node.statusMeta.label}`}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onFocusNode(node.id);
-          }
-        }}
-      >
-        <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
-        <span className="node-corner-status" title={node.statusMeta.label}>
-          {node.status === "succeeded" ? <CheckCircle weight="fill" aria-hidden="true" /> : null}
-        </span>
-      </div>
+        <div
+          className="node-frame"
+          role="button"
+          tabIndex="0"
+          aria-pressed={selected}
+          aria-label={`${node.title}，${node.statusMeta.label}`}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onFocusNode(node.id);
+            }
+          }}
+        >
+          <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
+          <span className="node-corner-status" title={node.statusMeta.label}>
+            {node.status === "succeeded" ? <CheckCircle weight="fill" aria-hidden="true" /> : null}
+          </span>
+        </div>
 
-      {selected ? <NodeQuickActions kind={kind} node={node} /> : null}
-      {selected ? <NodeComposer node={node} kind={kind} onUpdatePrompt={onUpdatePrompt} /> : null}
+        {selected ? <NodeQuickActions kind={kind} node={node} /> : null}
+        {selected ? <NodeComposer node={node} kind={kind} onUpdatePrompt={onUpdatePrompt} /> : null}
+      </div>
     </article>
   );
 }
@@ -361,7 +417,7 @@ function CanvasAddMenu({ open, onClose, onAddNode }) {
   );
 }
 
-function CanvasDock({ tool, onToolChange, showEdges, onToggleEdges, onFit, onAddNode, onArrange }) {
+function CanvasDock({ tool, onToolChange, onAddNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -369,37 +425,82 @@ function CanvasDock({ tool, onToolChange, showEdges, onToggleEdges, onFit, onAdd
       <CanvasAddMenu open={menuOpen} onClose={() => setMenuOpen(false)} onAddNode={onAddNode} />
       <div className="canvas-dock" role="toolbar" aria-label="画布工具" data-canvas-control>
         <button className={`dock-add ${menuOpen ? "active" : ""}`} type="button" onClick={() => setMenuOpen((value) => !value)} aria-expanded={menuOpen} aria-label="添加节点" title="添加节点"><Plus weight="bold" aria-hidden="true" /></button>
-        <button className={tool === "pan" ? "active" : ""} type="button" onClick={() => onToolChange(tool === "pan" ? "select" : "pan")} aria-pressed={tool === "pan"} aria-label={tool === "pan" ? "切换到选择工具" : "切换到抓手工具"} title={tool === "pan" ? "选择和移动节点 (V)" : "抓手工具 (H)"}>{tool === "pan" ? <Hand weight="fill" aria-hidden="true" /> : <Cursor weight="fill" aria-hidden="true" />}</button>
-        <button className={showEdges ? "active" : ""} type="button" onClick={onToggleEdges} aria-pressed={showEdges} aria-label="显示连线" title="显示连线"><GitBranch aria-hidden="true" /></button>
-        <button type="button" onClick={onArrange} aria-label="整理画布" title="整理画布"><Sparkle aria-hidden="true" /></button>
-        <button type="button" onClick={onFit} aria-label="适合屏幕" title="适合屏幕 (0)"><LinkSimple aria-hidden="true" /></button>
-        <button type="button" onClick={onFit} aria-label="重置画布视角" title="重置画布视角"><Clock aria-hidden="true" /></button>
+        <button className={tool === "pan" ? "active" : ""} type="button" onClick={() => onToolChange(tool === "pan" ? "select" : "pan")} aria-pressed={tool === "pan"} aria-label="移动" title={tool === "pan" ? "切换到选择模式 (V)" : "移动画布 (H)"}><Cursor weight="regular" aria-hidden="true" /></button>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="打开工具箱" title="打开工具箱"><GitBranch weight="regular" aria-hidden="true" /></button>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="素材库" title="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
+        <button type="button" onClick={() => setMenuOpen(true)} aria-label="角色库" title="角色库"><UsersThree weight="regular" aria-hidden="true" /></button>
+        <button type="button" aria-label="历史记录" title="历史记录"><Clock weight="regular" aria-hidden="true" /></button>
         <span className="dock-divider" />
-        <button type="button" aria-label="键盘快捷键" title="键盘快捷键"><Keyboard aria-hidden="true" /></button>
-        <button type="button" aria-label="画布帮助" title="画布帮助"><Question aria-hidden="true" /></button>
+        <button type="button" aria-label="快捷键" title="快捷键"><Keyboard weight="regular" aria-hidden="true" /></button>
+        <button type="button" aria-label="教程" title="教程"><Question weight="regular" aria-hidden="true" /></button>
       </div>
     </>
   );
 }
 
-function CanvasAside({ showEdges, onToggleEdges, onFit }) {
+function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoom }) {
+  if (!open) return null;
   return (
-    <div className="canvas-aside" data-canvas-control>
-      <button className="asset-manage-button" type="button" onClick={onFit} aria-label="资源管理" title="资源管理"><Stack aria-hidden="true" /><span>资源管理</span></button>
-      <button className={showEdges ? "active" : ""} type="button" onClick={onToggleEdges} aria-pressed={showEdges} aria-label="显示连线" title="显示连线"><GitBranch aria-hidden="true" /></button>
-      <button type="button" onClick={onFit} aria-label="画布概览" title="画布概览"><CornersOut aria-hidden="true" /></button>
-      <button type="button" aria-label="画布提示" title="画布提示"><List aria-hidden="true" /></button>
+    <div className="canvas-zoom-options" role="menu" aria-label="缩放选项" data-canvas-control>
+      <div>
+        <button type="button" onClick={onZoomOut} aria-label="缩小画布"><MagnifyingGlassMinus aria-hidden="true" /></button>
+        <strong>{Math.round(zoom * 100)}%</strong>
+        <button type="button" onClick={onZoomIn} aria-label="放大画布"><MagnifyingGlassPlus aria-hidden="true" /></button>
+      </div>
+      <div className="zoom-presets">
+        {[0.5, 0.75, 1].map((value) => <button key={value} type="button" onClick={() => { onSetZoom(value); onClose(); }}>{Math.round(value * 100)}%</button>)}
+        <button type="button" onClick={() => { onFit(); onClose(); }}>适合画布</button>
+      </div>
     </div>
   );
 }
 
-function ZoomDock({ zoom, onZoomIn, onZoomOut, onFit }) {
+function CanvasAssetManager({ open, draft, onClose, onSelectNode }) {
+  if (!open) return null;
+  const entries = draft.nodes.flatMap((node) => node.outputAssets
+    .filter((asset) => asset.previewUrl)
+    .map((asset) => ({ asset, node })));
+
   return (
-    <div className="zoom-dock" role="group" aria-label="缩放控制" data-canvas-control>
-      <button type="button" onClick={onZoomOut} aria-label="缩小画布"><MagnifyingGlassMinus aria-hidden="true" /></button>
-      <button className="zoom-value" type="button" onClick={onFit} aria-label={`当前缩放 ${Math.round(zoom * 100)}%，点击适合屏幕`}>{Math.round(zoom * 100)}%</button>
-      <button type="button" onClick={onZoomIn} aria-label="放大画布"><MagnifyingGlassPlus aria-hidden="true" /></button>
-    </div>
+    <aside className="canvas-asset-manager" role="dialog" aria-modal="false" aria-labelledby="asset-manager-title" data-canvas-control>
+      <header>
+        <div><span>当前画布</span><h2 id="asset-manager-title">资产管理</h2></div>
+        <button type="button" onClick={onClose} aria-label="关闭资产管理"><X aria-hidden="true" /></button>
+      </header>
+      <div className="asset-manager-list">
+        {entries.length > 0 ? entries.map(({ asset, node }) => (
+          <button
+            key={asset.id}
+            type="button"
+            onClick={() => { onSelectNode(node.id); onClose(); }}
+            aria-label={`聚焦 ${node.title}`}
+          >
+            <img src={asset.previewUrl} alt="" />
+            <span><strong>{node.title}</strong><small>{node.spec.mediaKind === "image" ? "图片" : "视频"}</small></span>
+          </button>
+        )) : <p>还没有可管理的生成资产。</p>}
+      </div>
+    </aside>
+  );
+}
+
+function CanvasAside({ draft, onSelectNode, showEdges, onToggleEdges, snapToGrid, onToggleSnap, showMinimap, onToggleMinimap, zoom, onZoomIn, onZoomOut, onSetZoom, onFit, onArrange }) {
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const [assetManagerOpen, setAssetManagerOpen] = useState(false);
+
+  return (
+    <>
+      <div className="canvas-aside" data-canvas-control>
+        <button className="asset-manage-button" type="button" onClick={() => setAssetManagerOpen(true)} aria-label="资产管理" title="资产管理"><Stack weight="regular" aria-hidden="true" /><span>资产管理</span></button>
+        <button type="button" onClick={onArrange} aria-label="整理画布，Alt+Shift+F" title="整理画布 (Alt+Shift+F)"><GridFour weight="regular" aria-hidden="true" /></button>
+        <button className={showMinimap ? "active" : ""} type="button" onClick={onToggleMinimap} aria-pressed={showMinimap} aria-label="切换小地图" title="切换小地图"><MapTrifold weight="regular" aria-hidden="true" /></button>
+        <button className={!showEdges ? "active" : ""} type="button" onClick={onToggleEdges} aria-pressed={!showEdges} aria-label="隐藏节点连线" title="隐藏节点连线"><BezierCurve weight="regular" aria-hidden="true" /></button>
+        <button className={snapToGrid ? "active" : ""} type="button" onClick={onToggleSnap} aria-pressed={snapToGrid} aria-label="网格吸附" title="网格吸附"><Magnet weight="regular" aria-hidden="true" /></button>
+        <button className="zoom-value" type="button" onClick={() => setZoomOpen((value) => !value)} aria-expanded={zoomOpen} aria-label="缩放选项" title="缩放选项">{Math.round(zoom * 100)}%</button>
+      </div>
+      <ZoomOptions open={zoomOpen} zoom={zoom} onClose={() => setZoomOpen(false)} onFit={onFit} onZoomIn={onZoomIn} onZoomOut={onZoomOut} onSetZoom={onSetZoom} />
+      <CanvasAssetManager open={assetManagerOpen} draft={draft} onClose={() => setAssetManagerOpen(false)} onSelectNode={onSelectNode} />
+    </>
   );
 }
 
@@ -420,15 +521,25 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const viewportRef = useRef(null);
   const isCompactViewport = window.innerWidth <= 700;
   const fitMaxZoom = window.innerWidth <= 800 ? 0.37 : 0.64;
-  const { fitView, screenToFlowPosition, zoomIn, zoomOut } = useReactFlow();
+  const { fitView, getViewport, screenToFlowPosition, setViewport, zoomIn, zoomOut } = useReactFlow();
   const [tool, setTool] = useState("select");
   const [showEdges, setShowEdges] = useState(true);
-  const [zoom, setZoom] = useState(1);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [zoom, setZoom] = useState(DEFAULT_CANVAS_ZOOM);
+  const initialViewport = useMemo(() => ({
+    x: Math.round(Math.min(412, Math.max(24, window.innerWidth * 0.32))),
+    y: Math.round(Math.min(240, Math.max(96, window.innerHeight * 0.33))),
+    zoom: DEFAULT_CANVAS_ZOOM,
+  }), []);
 
   const focusNode = useCallback((nodeId) => onSelectNode(nodeId), [onSelectNode]);
 
   const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt }), [focusNode, onOpenPreview, onUpdatePrompt]);
-  const projectedNodes = useMemo(() => toFlowNodes(draft, selectedNodeId, nodeData), [draft, nodeData, selectedNodeId]);
+  const projectedNodes = useMemo(
+    () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE),
+    [draft, nodeData, selectedNodeId],
+  );
   const [nodes, setNodes, handleNodesChange] = useNodesState(projectedNodes);
   const edges = useMemo(() => showEdges ? toFlowEdges(draft) : [], [draft, showEdges]);
 
@@ -439,6 +550,11 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const handleFit = useCallback(() => {
     void fitView({ padding: FIT_VIEW_PADDING, minZoom: MIN_ZOOM, maxZoom: fitMaxZoom, duration: 260 });
   }, [fitMaxZoom, fitView]);
+
+  const handleSetZoom = useCallback((nextZoom) => {
+    const current = getViewport();
+    void setViewport({ ...current, zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom)) }, { duration: 120 });
+  }, [getViewport, setViewport]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -463,8 +579,8 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     });
     const size = getNodeSize(descriptor);
     const preferredPosition = {
-      x: Math.round(center.x - size.width / 2),
-      y: Math.round(center.y - size.height / 2),
+      x: Math.round(center.x / CANVAS_PRESENTATION_SCALE - size.width / 2),
+      y: Math.round(center.y / CANVAS_PRESENTATION_SCALE - size.height / 2),
     };
     onAddNode(descriptor, findOpenNodePosition(draft, preferredPosition, descriptor));
   }, [draft, onAddNode, screenToFlowPosition]);
@@ -480,7 +596,10 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         onNodesChange={handleNodesChange}
         onNodeClick={(_, node) => focusNode(node.id)}
         onNodeDragStart={(_, node) => onSelectNode(node.id)}
-        onNodeDragStop={(_, node) => onMoveNode(node.id, node.position)}
+        onNodeDragStop={(_, node) => onMoveNode(node.id, {
+          x: Math.round(node.position.x / CANVAS_PRESENTATION_SCALE),
+          y: Math.round(node.position.y / CANVAS_PRESENTATION_SCALE),
+        })}
         onPaneClick={() => onSelectNode(null)}
         onConnect={(connection) => {
           const mutation = connectionToGraphMutation(draft, connection);
@@ -493,25 +612,43 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         edgesReconnectable={false}
         panOnDrag={tool === "pan" ? true : [1, 2]}
         selectionOnDrag={tool === "select"}
+        snapToGrid={snapToGrid}
+        snapGrid={[20, 20]}
         zoomOnScroll
         zoomOnPinch
         zoomOnDoubleClick={false}
         minZoom={MIN_ZOOM}
         maxZoom={MAX_ZOOM}
-        fitView={!isCompactViewport}
+        defaultViewport={initialViewport}
+        fitView={isCompactViewport}
         fitViewOptions={{ padding: FIT_VIEW_PADDING, minZoom: MIN_ZOOM, maxZoom: fitMaxZoom }}
         deleteKeyCode={["Backspace", "Delete"]}
         colorMode="dark"
         proOptions={{ hideAttribution: true }}
         data-testid="react-flow-editor"
       >
-        <Background variant={BackgroundVariant.Dots} gap={44} size={1.5} color="#525252" />
+        <Background variant={BackgroundVariant.Dots} gap={32} size={1} color="#3c3c3c" />
+        {showMinimap ? <MiniMap className="canvas-mini-map" maskColor="rgb(20 20 20 / 66%)" pannable zoomable /> : null}
       </ReactFlow>
 
       {draft.nodes.length === 0 ? <EmptyCanvasGuide onAddNode={addAtViewportCenter} /> : null}
-      <CanvasAside showEdges={showEdges} onToggleEdges={() => setShowEdges((value) => !value)} onFit={handleFit} />
-      <CanvasDock tool={tool} onToolChange={setTool} showEdges={showEdges} onToggleEdges={() => setShowEdges((value) => !value)} onFit={handleFit} onAddNode={addAtViewportCenter} onArrange={onArrange} />
-      <ZoomDock zoom={zoom} onZoomIn={() => void zoomIn({ duration: 120 })} onZoomOut={() => void zoomOut({ duration: 120 })} onFit={handleFit} />
+      <CanvasAside
+        draft={draft}
+        onSelectNode={onSelectNode}
+        showEdges={showEdges}
+        onToggleEdges={() => setShowEdges((value) => !value)}
+        snapToGrid={snapToGrid}
+        onToggleSnap={() => setSnapToGrid((value) => !value)}
+        showMinimap={showMinimap}
+        onToggleMinimap={() => setShowMinimap((value) => !value)}
+        zoom={zoom}
+        onZoomIn={() => void zoomIn({ duration: 120 })}
+        onZoomOut={() => void zoomOut({ duration: 120 })}
+        onSetZoom={handleSetZoom}
+        onFit={handleFit}
+        onArrange={onArrange}
+      />
+      <CanvasDock tool={tool} onToolChange={setTool} onAddNode={addAtViewportCenter} />
     </section>
   );
 }

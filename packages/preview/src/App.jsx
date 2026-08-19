@@ -20,10 +20,11 @@ import {
   ShareNetwork,
   SquaresFour,
   Sparkle,
+  UserCircle,
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
-import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
+import referenceCanvasDemo from "./reference-canvas-demo.json";
 import { CanvasViewport } from "./CanvasViewport.jsx";
 import { resolveDemoAssetUrl } from "./demo-assets.js";
 import { createPreviewModel, truncateIdentifier } from "./project-document.js";
@@ -110,15 +111,16 @@ function ProjectHeader({
   return (
     <header className="topbar">
       <div className="project-identity">
-        <div className="project-mark" aria-hidden="true"><FilmSlate weight="fill" /></div>
-        <div className="project-copy">
-          <span className="project-kicker">工作区</span>
+        <button className="project-mark" type="button" aria-label="打开工作区"><FilmSlate weight="fill" aria-hidden="true" /></button>
+        <span className="project-kicker">工作区</span>
+        <span className="project-divider" aria-hidden="true" />
+        <button className="project-canvas-select" type="button" aria-label={`切换画布，当前 ${model.project.title}`}>
           <strong title={model.project.title}>
             <span className="project-name-full">{model.project.title}</span>
             <span className="project-name-compact">画布 1</span>
           </strong>
-        </div>
-        <CaretDown className="project-caret" aria-hidden="true" />
+          <CaretDown className="project-caret" aria-hidden="true" />
+        </button>
       </div>
 
       <div className="project-top-tools" aria-label="画布视图工具">
@@ -159,8 +161,11 @@ function ProjectHeader({
 
       <div className="source-style-actions" aria-label="创作辅助工具">
         <button type="button" className="header-icon-action" aria-label="分享画布" title="分享画布"><ShareNetwork aria-hidden="true" /></button>
+        <button type="button" className="header-icon-action header-library-action" aria-label="创作工具" title="创作工具"><SquaresFour weight="fill" aria-hidden="true" /></button>
+        <button type="button" className="header-upgrade-action" aria-label="升级创作套餐" title="升级创作套餐"><Sparkle weight="fill" aria-hidden="true" /><span>升级创作</span><small>限时</small></button>
         <button type="button" className="header-credit-action" aria-label="创作额度"><Lightning weight="fill" aria-hidden="true" /><span>20</span></button>
-        <button type="button" className="header-agent-action" aria-label="打开创作 AI"><Sparkle weight="fill" aria-hidden="true" /><span>AI</span></button>
+        <button type="button" className="header-avatar-action" aria-label="账户"><UserCircle weight="fill" aria-hidden="true" /></button>
+        <button type="button" className="header-agent-action" aria-label="打开创作 AI"><Sparkle weight="fill" aria-hidden="true" /><span>Agent</span></button>
       </div>
     </header>
   );
@@ -201,7 +206,7 @@ function AssetDialog({ preview, onClose }) {
   );
 }
 
-export function App({ initialDocument = exampleDocument }) {
+export function App({ initialDocument = referenceCanvasDemo }) {
   const [document, setDocument] = useState(() => parseCanvasDocument(initialDocument));
   const [draftId, setDraftId] = useState(initialDocument.activeDraftId);
   const [selectedNodeId, setSelectedNodeId] = useState(null);

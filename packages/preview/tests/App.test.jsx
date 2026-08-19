@@ -12,31 +12,36 @@ import exampleDocument from "../../../docs/examples/canvas-v1-shot2-night.json";
 import { App } from "../src/App.jsx";
 
 describe("editable open canvas", () => {
-  it("renders the active variation as a React Flow editor", async () => {
+  it("opens a source-aligned image-to-text creative canvas by default", async () => {
     render(<App />);
 
-    expect(screen.getByText("Three-shot science-fiction short")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "草稿" })).toHaveValue(exampleDocument.activeDraftId);
+    expect(screen.getByText("创作画布")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "草稿" })).toHaveValue("draft_019c8f55-9001-7000-8000-000000000001");
     expect(screen.getByTestId("react-flow-editor")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "添加节点" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "导出 JSON" })).toBeEnabled();
 
-    const selectedNode = await screen.findByRole("button", { name: /Shot 2 — Crossing，待生成/ });
+    const selectedNode = await screen.findByRole("button", { name: /图片节点 2，已完成/ });
     expect(selectedNode).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByRole("region", { name: "Shot 2 — Crossing 参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "图片节点 2 参数" })).not.toBeInTheDocument();
 
     fireEvent.click(selectedNode);
     expect(selectedNode).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("region", { name: "Shot 2 — Crossing 参数" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "图片节点 2 参数" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "人像质感调节" })).toBeInTheDocument();
+    for (const label of ["全景", "多角度", "打光", "九宫格", "高清", "宫格切分", "画笔编辑", "下载素材"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
-      "At night, the courier walks through a moonlit glass transit corridor.",
+      "测试素材：抽象蓝色圆形。",
     );
+    expect(screen.getByText("2048 × 1152")).toBeInTheDocument();
     expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 
   it("switches drafts and opens a generated asset preview", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<App initialDocument={exampleDocument} />);
 
     await user.selectOptions(screen.getByRole("combobox", { name: "草稿" }), exampleDocument.drafts[0].id);
     await waitFor(() => expect(screen.queryByText("2 待处理")).not.toBeInTheDocument());
@@ -54,7 +59,7 @@ describe("editable open canvas", () => {
 
   it("edits a prompt through the shared command core and supports undo and redo", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<App initialDocument={exampleDocument} />);
 
     await user.selectOptions(screen.getByRole("combobox", { name: "草稿" }), exampleDocument.drafts[0].id);
     fireEvent.click(await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ }));
@@ -78,19 +83,33 @@ describe("editable open canvas", () => {
 
   it("adds nodes and keeps canvas controls interactive", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<App initialDocument={exampleDocument} />);
 
     const toolbar = screen.getByRole("toolbar", { name: "画布工具" });
-    const edgeToggle = within(toolbar).getByRole("button", { name: "显示连线" });
-    expect(edgeToggle).toHaveAttribute("aria-pressed", "true");
-    await user.click(edgeToggle);
+    const edgeToggle = screen.getByRole("button", { name: "隐藏节点连线" });
     expect(edgeToggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(edgeToggle);
+    expect(edgeToggle).toHaveAttribute("aria-pressed", "true");
 
-    await user.click(screen.getByRole("button", { name: "切换到抓手工具" }));
-    const selectTool = screen.getByRole("button", { name: "切换到选择工具" });
-    expect(selectTool).toHaveAttribute("aria-pressed", "true");
-    await user.click(selectTool);
-    expect(screen.getByRole("button", { name: "切换到抓手工具" })).toHaveAttribute("aria-pressed", "false");
+    const snapToggle = screen.getByRole("button", { name: "网格吸附" });
+    expect(snapToggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(snapToggle);
+    expect(snapToggle).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "缩放选项" }));
+    expect(screen.getByRole("menu", { name: "缩放选项" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "适合画布" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "资产管理" }));
+    expect(screen.getByRole("dialog", { name: "资产管理" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭资产管理" }));
+    expect(screen.queryByRole("dialog", { name: "资产管理" })).not.toBeInTheDocument();
+
+    const moveTool = within(toolbar).getByRole("button", { name: "移动" });
+    await user.click(moveTool);
+    expect(moveTool).toHaveAttribute("aria-pressed", "true");
+    await user.click(moveTool);
+    expect(moveTool).toHaveAttribute("aria-pressed", "false");
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     expect(screen.getByRole("menu", { name: "添加画布节点" })).toBeInTheDocument();
@@ -101,7 +120,7 @@ describe("editable open canvas", () => {
 
   it("offers the full creative-node palette and persists context nodes", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<App initialDocument={exampleDocument} />);
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const menu = screen.getByRole("menu", { name: "添加画布节点" });
@@ -119,7 +138,7 @@ describe("editable open canvas", () => {
 
   it("adds a persistent text node with an editable canvas prompt", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<App initialDocument={exampleDocument} />);
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     await user.click(screen.getByRole("menuitem", { name: /文本/ }));
@@ -193,7 +212,7 @@ describe("editable open canvas", () => {
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
     try {
-      render(<App />);
+      render(<App initialDocument={exampleDocument} />);
       expect(await screen.findByRole("button", { name: /Shot 2 — Crossing，待生成/ })).toBeInTheDocument();
       expect(screen.getByRole("toolbar", { name: "画布工具" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "添加节点" })).toBeEnabled();

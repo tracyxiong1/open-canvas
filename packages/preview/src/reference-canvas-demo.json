@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "revision": 5,
+  "project": {
+    "id": "project_019c8f55-9000-7000-8000-000000000000",
+    "title": "创作画布",
+    "createdAt": "2026-08-19T12:00:00Z",
+    "updatedAt": "2026-08-19T12:00:05Z"
+  },
+  "activeDraftId": "draft_019c8f55-9001-7000-8000-000000000001",
+  "drafts": [
+    {
+      "id": "draft_019c8f55-9001-7000-8000-000000000001",
+      "title": "画布 1",
+      "revision": 5,
+      "createdAt": "2026-08-19T12:00:00Z",
+      "updatedAt": "2026-08-19T12:00:05Z",
+      "nodes": [
+        {
+          "id": "node_019c8f55-9101-7000-8000-000000000001",
+          "title": "图片节点 2",
+          "position": { "x": 0, "y": 0 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "测试素材：抽象蓝色圆形。",
+            "mediaKind": "image",
+            "inputAssetIds": [],
+            "requirements": {
+              "aspectRatio": "16:9",
+              "width": 2048,
+              "height": 1152,
+              "mediaType": "image/png"
+            }
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:01789de2341cd44b049fa450e29602b527b828ec03054c630a786a2c34f70622",
+            "activeJobId": "job_019c8f55-9201-7000-8000-000000000001",
+            "outputAssetIds": [
+              "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8"
+            ]
+          }
+        },
+        {
+          "id": "node_019c8f55-9102-7000-8000-000000000002",
+          "title": "文本节点 1",
+          "position": { "x": 414, "y": 0 },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "role": "text",
+            "prompt": "测试素材：抽象蓝色圆形。",
+            "mediaType": "text/plain"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:8f342bd061b63f1ff349758d93b70c3c3cc6570ce48d279f65f307f8f25b0132",
+            "outputAssetIds": []
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_019c8f55-9301-7000-8000-000000000001",
+          "kind": "dependency",
+          "sourceNodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "targetNodeId": "node_019c8f55-9102-7000-8000-000000000002"
+        }
+      ],
+      "jobs": [
+        {
+          "id": "job_019c8f55-9201-7000-8000-000000000001",
+          "nodeId": "node_019c8f55-9101-7000-8000-000000000001",
+          "attempt": 1,
+          "inputFingerprint": "sha256:01789de2341cd44b049fa450e29602b527b828ec03054c630a786a2c34f70622",
+          "status": "succeeded",
+          "route": {
+            "providerId": "mock",
+            "modelId": "mock-image-v1",
+            "selectionSource": "registry_default"
+          },
+          "outputAssetIds": [
+            "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8"
+          ],
+          "createdAt": "2026-08-19T12:00:03Z",
+          "updatedAt": "2026-08-19T12:00:04Z",
+          "providerJobId": "demo:image:001",
+          "progress": 1
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "kind": "image",
+      "mediaType": "image/png",
+      "byteLength": 1328633,
+      "checksumSha256": "sha256:df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "path": "assets/sha256/df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "origin": {
+        "kind": "job",
+        "draftId": "draft_019c8f55-9001-7000-8000-000000000001",
+        "jobId": "job_019c8f55-9201-7000-8000-000000000001"
+      },
+      "createdAt": "2026-08-19T12:00:04Z"
+    }
+  ]
+}
