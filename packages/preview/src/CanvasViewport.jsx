@@ -11,6 +11,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
@@ -36,6 +37,7 @@ import {
   Eraser,
   FilmSlate,
   FileText,
+  FlowerLotus,
   FolderSimple,
   GridFour,
   GridNine,
@@ -83,7 +85,6 @@ import {
   IconBadgeHd,
   IconClock as TablerClock,
   IconHelpCircle,
-  IconHierarchy2,
   IconHighlight,
   IconKeyboard as TablerKeyboard,
   IconLayoutDashboard,
@@ -94,6 +95,7 @@ import {
 } from "@tabler/icons-react";
 import { getNodeSize } from "./project-document.js";
 import {
+  buildAutoLayoutPositions,
   connectionToGraphMutation,
   CANVAS_PRESENTATION_SCALE,
   findOpenNodePosition,
@@ -104,8 +106,9 @@ import {
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
-const FIT_VIEW_PADDING = 0.1;
+const FIT_VIEW_PADDING = 0.12;
 const DEFAULT_CANVAS_ZOOM = 0.5;
+const FIT_VIEW_BIAS = Object.freeze({ x: 10, y: -13.825 });
 
 const CONTEXT_NODE_ROLES = new Set([
   "text",
@@ -284,7 +287,7 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
           />
           <footer className="text-composer-tools">
             <button className="text-composer-model" type="button" aria-label="选择理解模型">
-              <span className="text-composer-model-copy"><Sparkle weight="fill" aria-hidden="true" /><span>VLM 3.1</span></span><CaretRight aria-hidden="true" />
+              <span className="text-composer-model-copy"><FlowerLotus weight="fill" aria-hidden="true" /><span>GVLM 3.1</span></span><CaretRight aria-hidden="true" />
             </button>
             <span className="text-composer-spacer" />
             <span className="text-composer-tools-end">
@@ -907,9 +910,9 @@ function TutorialPopover({ onClose }) {
   return (
     <section className="dock-tutorial-popover" role="dialog" aria-label="帮助与教程" data-canvas-control>
       <button type="button" onClick={onClose}>使用教程</button>
-      <button type="button" onClick={onClose}>联系支持</button>
-      <button type="button" onClick={onClose}>产品反馈</button>
-      <button type="button" onClick={onClose}>关注动态</button>
+      <button type="button" onClick={onClose}>联系客服</button>
+      <button type="button" onClick={onClose}>联系销售</button>
+      <button type="button" onClick={onClose}>关注公众号</button>
     </section>
   );
 }
@@ -917,29 +920,33 @@ function TutorialPopover({ onClose }) {
 function ShortcutSheet({ onClose }) {
   const scrollRef = useRef(null);
   const [scrollMetrics, setScrollMetrics] = useState({ clientHeight: 0, scrollHeight: 0, scrollTop: 0 });
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  const primaryKey = isMac ? "⌘" : "Ctrl";
+  const optionKey = isMac ? "⌥" : "Alt";
+  const shiftKey = isMac ? "⇧" : "Shift";
   const groups = [
     {
       title: "创作",
       rows: [
-        { label: "成组", keys: ["Ctrl/Alt", "G"] },
-        { label: "合并分镜组", keys: ["Ctrl", "Alt", "G"] },
-        { label: "解组", keys: ["Ctrl/Alt", "Shift", "G"] },
-        { label: "连线", keys: ["Ctrl", "L"] },
-        { label: "复制节点和连线", keys: ["Ctrl", "D"] },
-        { label: "生成", keys: ["Ctrl", "Enter"] },
+        { label: "成组", keys: [primaryKey, "G"] },
+        { label: "合并分镜组", keys: [primaryKey, optionKey, "G"] },
+        { label: "解组", keys: [primaryKey, shiftKey, "G"] },
+        { label: "连线", keys: [primaryKey, "L"] },
+        { label: "复制节点和连线", keys: [primaryKey, "D"] },
+        { label: "生成", keys: [primaryKey, "Enter"] },
         { label: "新建节点", keys: ["Tab"] },
-        { label: "节点复制", keys: ["Alt"], suffix: "+拖动节点" },
-        { label: "创建副本", keys: ["Ctrl", "Alt"], suffix: "+拖动" },
+        { label: "节点复制", keys: [isMac ? "Option" : "Alt"], suffix: "+拖动节点" },
+        { label: "创建副本", keys: [isMac ? "Option" : "Alt"], suffix: "+拖动" },
       ],
     },
     {
       title: "缩放",
       rows: [
-        { label: "放大", keys: ["Ctrl", { icon: "plus", label: "+" }] },
-        { label: "缩小", keys: ["Ctrl", { icon: "minus", label: "−" }] },
-        { label: "适应画布", keys: ["Ctrl", "0"] },
+        { label: "放大", keys: [primaryKey, { icon: "plus", label: "+" }] },
+        { label: "缩小", keys: [primaryKey, { icon: "minus", label: "−" }] },
+        { label: "适应画布", keys: [primaryKey, "0"] },
         { label: "触控板", keys: ["⌘", "滚动"] },
-        { label: "鼠标", keys: ["Ctrl", "滚轮"] },
+        { label: "鼠标", keys: [primaryKey, "滚轮"] },
       ],
     },
     {
@@ -947,13 +954,13 @@ function ShortcutSheet({ onClose }) {
       rows: [
         { label: "键盘", keys: ["Space", "拖动"] },
         { label: "触控板", keys: ["双指拖动"] },
-        { label: "鼠标", keys: ["Ctrl", "拖动"] },
+        { label: "鼠标", keys: [primaryKey, "拖动"] },
         { label: "移动", keys: ["V"] },
         { label: "抓手工具", keys: ["H"] },
-        { label: "整理画布", keys: ["Alt", "Shift", "F"] },
+        { label: "整理画布", keys: [optionKey, shiftKey, "F"] },
       ],
     },
-    { title: "其他", rows: [{ label: "撤销", keys: ["Ctrl", "Z"] }, { label: "重做", keys: ["Ctrl", "Shift", "Z"] }, { label: "删除", keys: ["Backspace"] }] },
+    { title: "其他", rows: [{ label: "撤销", keys: [primaryKey, "Z"] }, { label: "重做", keys: [primaryKey, shiftKey, "Z"] }, { label: "删除", keys: ["Backspace"] }] },
   ];
 
   const renderKey = (key) => {
@@ -995,10 +1002,9 @@ function ShortcutSheet({ onClose }) {
               <div key={`${group.title}-${row.label}`}>
                 <span>{row.label}</span>
                 <span className="shortcut-keyset">
-                  {row.keys.flatMap((key, index) => [
-                    index > 0 ? <span className="shortcut-key-separator" key={`${row.label}-separator-${index}`} aria-hidden="true">+</span> : null,
-                    <kbd className={typeof key === "string" ? "" : "shortcut-icon-key"} key={`${row.label}-${typeof key === "string" ? key : key.label}`}>{renderKey(key)}</kbd>,
-                  ])}
+                  {row.keys.map((key) => (
+                    <kbd className={typeof key === "string" ? "" : "shortcut-icon-key"} key={`${row.label}-${typeof key === "string" ? key : key.label}`}>{renderKey(key)}</kbd>
+                  ))}
                   {row.suffix ? <span className="shortcut-key-suffix">{row.suffix}</span> : null}
                 </span>
               </div>
@@ -1132,7 +1138,7 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
             </span>
           ) : null}
         </span>
-        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><IconHierarchy2 aria-hidden="true" /></button>
+        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><ShareNetwork weight="regular" aria-hidden="true" /></button>
         <button className={openPanel === "library" ? "active" : ""} type="button" onClick={(event) => togglePanel("library", event)} aria-label="素材库" data-tooltip="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
         <button className={`dock-role-button ${openPanel === "roles" ? "active" : ""}`} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><Binoculars weight="regular" aria-hidden="true" /><span className="dock-notification-dot" aria-hidden="true" /></button>
         <button className={openPanel === "history" ? "active" : ""} type="button" onClick={(event) => togglePanel("history", event)} aria-label="历史记录" data-tooltip="历史记录"><TablerClock aria-hidden="true" /></button>
@@ -1332,15 +1338,18 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const viewportRef = useRef(null);
   const fitMaxZoom = window.innerWidth <= 800 ? 0.37 : 0.64;
   const { fitView, getViewport, screenToFlowPosition, setViewport, zoomIn, zoomOut } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   const [tool, setTool] = useState("select");
   const [showEdges, setShowEdges] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [showMinimap, setShowMinimap] = useState(false);
   const [zoom, setZoom] = useState(DEFAULT_CANVAS_ZOOM);
   const [assetManagerOpen, setAssetManagerOpen] = useState(false);
+  const [arrangementPreview, setArrangementPreview] = useState(null);
   const [quickActionsPosition, setQuickActionsPosition] = useState(null);
   const [quickActionMenu, setQuickActionMenu] = useState(null);
   const [quickActionModes, setQuickActionModes] = useState({});
+  const initialFitDraftRef = useRef(null);
   const initialViewport = useMemo(() => ({
     // Preserve the reference's fixed world origin at narrow widths. The
     // canvas does not auto-fit its authored layout when the window shrinks.
@@ -1387,6 +1396,29 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   const [nodes, setNodes, handleNodesChange] = useNodesState(projectedNodes);
   const edges = useMemo(() => showEdges ? toFlowEdges(draft, selectedNodeId) : [], [draft, selectedNodeId, showEdges]);
 
+  const fitCanvas = useCallback(async (duration = 260) => {
+    await fitView({ padding: FIT_VIEW_PADDING, minZoom: MIN_ZOOM, maxZoom: fitMaxZoom, duration });
+    const fittedViewport = getViewport();
+    await setViewport({
+      ...fittedViewport,
+      x: fittedViewport.x + FIT_VIEW_BIAS.x,
+      y: fittedViewport.y + FIT_VIEW_BIAS.y,
+    }, { duration: 0 });
+  }, [fitMaxZoom, fitView, getViewport, setViewport]);
+
+  const fitArrangedCanvas = useCallback(async () => {
+    await fitView({ padding: FIT_VIEW_PADDING, minZoom: MIN_ZOOM, maxZoom: fitMaxZoom, duration: 260 });
+    const fittedViewport = getViewport();
+    await setViewport({
+      ...fittedViewport,
+      // The arrangement preview is pinned to the canvas safe area instead of
+      // centered. This leaves room for the confirmation card and mirrors the
+      // authored left/top inset used by the reference interaction.
+      x: 48,
+      y: 48,
+    }, { duration: 0 });
+  }, [fitMaxZoom, fitView, getViewport, setViewport]);
+
   const syncQuickActionsPosition = useCallback(() => {
     const viewport = viewportRef.current;
     const node = viewport?.querySelector(".canvas-node.selected");
@@ -1398,7 +1430,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     const nodeRect = node.getBoundingClientRect();
     setQuickActionsPosition({
       left: nodeRect.left - viewportRect.left + nodeRect.width / 2,
-      top: nodeRect.top - viewportRect.top - (60 + zoom * 24),
+      top: nodeRect.top - viewportRect.top - (59 + zoom * 24),
     });
   }, [zoom]);
 
@@ -1417,8 +1449,18 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   }, [nodes, selectedNode, selectedNodeKind, syncQuickActionsPosition, zoom]);
 
   useEffect(() => {
+    if (arrangementPreview) return;
     setNodes(projectedNodes);
-  }, [projectedNodes, setNodes]);
+  }, [arrangementPreview, projectedNodes, setNodes]);
+
+  useEffect(() => {
+    if (!nodesInitialized || draft.nodes.length === 0 || initialFitDraftRef.current === draft.id) return undefined;
+    initialFitDraftRef.current = draft.id;
+    const frame = window.requestAnimationFrame(() => {
+      void fitCanvas(0);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [draft.id, draft.nodes.length, fitCanvas, nodesInitialized]);
 
   useEffect(() => {
     setQuickActionMenu(null);
@@ -1429,8 +1471,39 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
   }, [assetManagerOpen, onAssetManagerChange]);
 
   const handleFit = useCallback(() => {
-    void fitView({ padding: FIT_VIEW_PADDING, minZoom: MIN_ZOOM, maxZoom: fitMaxZoom, duration: 260 });
-  }, [fitMaxZoom, fitView]);
+    void fitCanvas(260);
+  }, [fitCanvas]);
+
+  const handleArrangePreview = useCallback(() => {
+    if (draft.nodes.length === 0 || arrangementPreview) return;
+    const positions = buildAutoLayoutPositions(draft);
+    const originalViewport = getViewport();
+    setArrangementPreview({ originalViewport, positions });
+    setNodes((currentNodes) => currentNodes.map((node) => ({
+      ...node,
+      position: {
+        x: positions[node.id].x * CANVAS_PRESENTATION_SCALE,
+        y: positions[node.id].y * CANVAS_PRESENTATION_SCALE,
+      },
+    })));
+    window.requestAnimationFrame(() => {
+      void fitArrangedCanvas();
+    });
+  }, [arrangementPreview, draft, fitArrangedCanvas, getViewport, setNodes]);
+
+  const handleRevertArrangement = useCallback(() => {
+    if (!arrangementPreview) return;
+    const { originalViewport } = arrangementPreview;
+    setArrangementPreview(null);
+    setNodes(projectedNodes);
+    void setViewport(originalViewport, { duration: 260 });
+  }, [arrangementPreview, projectedNodes, setNodes, setViewport]);
+
+  const handleKeepArrangement = useCallback(() => {
+    if (!arrangementPreview) return;
+    onArrange(arrangementPreview.positions);
+    setArrangementPreview(null);
+  }, [arrangementPreview, onArrange]);
 
   const handleSetZoom = useCallback((nextZoom) => {
     const current = getViewport();
@@ -1441,6 +1514,11 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     const onKeyDown = (event) => {
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+      if (event.key === "Escape" && arrangementPreview) {
+        event.preventDefault();
+        handleRevertArrangement();
+        return;
+      }
       if (event.key.toLowerCase() === "v") setTool("select");
       if (event.key.toLowerCase() === "h") setTool("pan");
       if (event.key === "0") handleFit();
@@ -1450,7 +1528,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleFit, onSelectNode, zoomIn, zoomOut]);
+  }, [arrangementPreview, handleFit, handleRevertArrangement, onSelectNode, zoomIn, zoomOut]);
 
   const addAtViewportCenter = useCallback((descriptor) => {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -1545,8 +1623,17 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
         onZoomOut={() => void zoomOut({ duration: 120 })}
         onSetZoom={handleSetZoom}
         onFit={handleFit}
-        onArrange={onArrange}
+        onArrange={handleArrangePreview}
       />
+      {arrangementPreview ? (
+        <section className="arrange-confirmation" role="dialog" aria-label="整理画布确认" data-canvas-control>
+          <p>是否保留此次整理结果？</p>
+          <div>
+            <button type="button" onClick={handleRevertArrangement} autoFocus>还原</button>
+            <button className="primary" type="button" onClick={handleKeepArrangement}>保留</button>
+          </div>
+        </section>
+      ) : null}
       <CanvasDock
         tool={tool}
         onToolChange={setTool}

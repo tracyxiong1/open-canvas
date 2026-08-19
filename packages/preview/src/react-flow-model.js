@@ -125,6 +125,78 @@ export function findOpenNodePosition(draft, preferredPosition, descriptor) {
   };
 }
 
+/**
+ * Build the same kind of left-to-right dependency layout used by the studio's
+ * “整理画布” preview. Positions stay in canonical document coordinates; the
+ * React Flow projection applies the presentation scale afterwards.
+ */
+export function buildAutoLayoutPositions(draft) {
+  const graphNodes = draft?.nodes ?? [];
+  if (graphNodes.length === 0) return {};
+
+  const nodeIds = new Set(graphNodes.map((node) => node.id));
+  const incoming = new Map(graphNodes.map((node) => [node.id, 0]));
+  const outgoing = new Map(graphNodes.map((node) => [node.id, []]));
+
+  for (const edge of draft.edges ?? []) {
+    if (!nodeIds.has(edge.sourceNodeId) || !nodeIds.has(edge.targetNodeId)) continue;
+    outgoing.get(edge.sourceNodeId).push(edge.targetNodeId);
+    incoming.set(edge.targetNodeId, (incoming.get(edge.targetNodeId) ?? 0) + 1);
+  }
+
+  const rank = new Map(graphNodes.map((node) => [node.id, 0]));
+  const queue = graphNodes.filter((node) => incoming.get(node.id) === 0).map((node) => node.id);
+  const visited = new Set();
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const sourceId = queue[cursor];
+    visited.add(sourceId);
+    for (const targetId of outgoing.get(sourceId) ?? []) {
+      rank.set(targetId, Math.max(rank.get(targetId) ?? 0, (rank.get(sourceId) ?? 0) + 1));
+      incoming.set(targetId, (incoming.get(targetId) ?? 1) - 1);
+      if (incoming.get(targetId) === 0) queue.push(targetId);
+    }
+  }
+
+  // Cycles are rejected by the command core, but imported documents may still
+  // contain one. Keep those nodes visible instead of dropping them.
+  for (const node of graphNodes) {
+    if (!visited.has(node.id)) rank.set(node.id, 0);
+  }
+
+  const columns = new Map();
+  for (const node of graphNodes) {
+    const nodeRank = rank.get(node.id) ?? 0;
+    const column = columns.get(nodeRank) ?? [];
+    column.push(node);
+    columns.set(nodeRank, column);
+  }
+
+  const orderedRanks = [...columns.keys()].sort((left, right) => left - right);
+  const columnGap = 103;
+  const positions = {};
+  const largestColumnSize = Math.max(...[...columns.values()].map((column) => column.length));
+  let x = 0;
+
+  for (const nodeRank of orderedRanks) {
+    const column = columns.get(nodeRank);
+    const columnWidth = Math.max(...column.map((node) => getNodeSize(node).width));
+    // The reference keeps a single source node tucked between the first two
+    // downstream cards instead of centering it against a very tall fan-out.
+    let y = nodeRank === 0 && column.length === 1 && largestColumnSize > 1 ? 72 : 0;
+
+    column.forEach((node, index) => {
+      positions[node.id] = { x, y };
+      // The captured layout alternates 53/47 world-unit gutters. With the
+      // 2× presentation scale this produces the visible 456/444 px rhythm.
+      y += getNodeHeight(node) + (index % 2 === 0 ? 53 : 47);
+    });
+    x += columnWidth + columnGap;
+  }
+
+  return positions;
+}
+
 function pathExists(edges, kind, startNodeId, goalNodeId) {
   const outgoing = new Map();
   for (const edge of edges) {

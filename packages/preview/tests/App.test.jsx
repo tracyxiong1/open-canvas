@@ -182,6 +182,24 @@ describe("editable open canvas", () => {
     expect(screen.getByText("General image V2")).toBeInTheDocument();
   });
 
+  it("previews canvas arrangement before the user keeps or restores it", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "整理画布，Alt+Shift+F" }));
+    const firstDialog = screen.getByRole("dialog", { name: "整理画布确认" });
+    expect(within(firstDialog).getByText("是否保留此次整理结果？")).toBeInTheDocument();
+    await user.click(within(firstDialog).getByRole("button", { name: "还原" }));
+    expect(screen.queryByRole("dialog", { name: "整理画布确认" })).not.toBeInTheDocument();
+    expect(screen.getByText("已保存")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "整理画布，Alt+Shift+F" }));
+    const secondDialog = screen.getByRole("dialog", { name: "整理画布确认" });
+    await user.click(within(secondDialog).getByRole("button", { name: "保留" }));
+    expect(screen.queryByRole("dialog", { name: "整理画布确认" })).not.toBeInTheDocument();
+    expect(screen.getByText("未保存")).toBeInTheDocument();
+  });
+
   it("offers the full creative-node palette and persists context nodes", async () => {
     const user = userEvent.setup();
     render(<App initialDocument={exampleDocument} />);
@@ -257,7 +275,7 @@ describe("editable open canvas", () => {
     expect(screen.queryByRole("menu", { name: "缩放选项" })).not.toBeInTheDocument();
 
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("测试镜头：城市天际线，夜景。");
-    expect(screen.getByText("VLM 3.1")).toBeInTheDocument();
+    expect(screen.getByText("GVLM 3.1")).toBeInTheDocument();
     expect(screen.getByLabelText("本次生成消耗 6 点")).toHaveTextContent("6");
     expect(screen.getByRole("button", { name: "应用提示词" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "移除参考素材" })).toBeInTheDocument();

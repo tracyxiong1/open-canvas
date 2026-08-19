@@ -1,80 +1,70 @@
 # Open Canvas visual fidelity QA — 2026-08-20
 
-## Scope and source of truth
+## Scope
 
-- **Reference:** the user-authorized live creative canvas, inspected in the user's chosen browser.
-- **Implementation:** `packages/preview`, rendered from the independent Open Canvas project document.
-- **Viewports:** 1280 × 994 and 716 × 994 CSS px at 1× density.
-- **Compared states:** clean canvas, selected image node, selected text node, zoom menu, add menu, tutorial menu, toolbox, material library, role library, history, shortcuts, asset sidebar, connector hover/selection, and narrow-view fitting.
-- **Evidence policy:** reference captures and side-by-side comparisons remain in local-only QA folders. No reference logo, session data, media, or proprietary icon asset ships with Open Canvas.
+- **Reference:** the user-authorized live creative canvas, exercised in the chosen in-app browser.
+- **Implementation:** `packages/preview`, backed by the independent Open Canvas document model.
+- **Primary viewport:** 716 × 714 CSS px at 1× density.
+- **Audited states:** default canvas, selected image node, add/move/zoom menus, toolbox, material library, tutorial, shortcuts, role library, history assets, and arrange preview.
+- **Evidence:** live reference and local captures were made at the same viewport and state, then judged side by side. Captures remain in local-only QA folders.
 
-The reference and implementation were captured at the same viewport, zoom, selected node, and open-panel state before each judgment. Each review used a side-by-side combined image, rather than separate screenshots viewed from memory.
+No reference logo, session data, source media, or proprietary icon asset ships with Open Canvas.
 
-## Final findings
+## Result
 
-No P0, P1, or P2 visual-fidelity issue remains in the audited canvas states.
+No P0, P1, or P2 issue remains in the audited high-priority canvas and toolbar states.
 
-- [P3] Open-source icon silhouettes differ optically from reference-specific icons.
-  - **Location:** project mark, panorama command, contextual actions, and account/agent controls.
-  - **Disposition:** intentional independent product identity. The implementation uses the closest Phosphor/Tabler icon instead of copying proprietary vectors.
-- [P3] Demo artwork is independently generated.
-  - **Location:** completed image node and role-card thumbnails.
-  - **Disposition:** intentional. Geometry, crop, hierarchy, and contrast match; the pixels remain Open Canvas assets.
-- [P3] The preview bundle retains Vite's existing 500 kB chunk advisory.
-  - **Disposition:** production optimization follow-up; it does not affect the audited interaction or visual result.
+- [P3] Product mark and a few action-icon silhouettes intentionally use the closest Phosphor/Tabler alternatives instead of reference-specific vectors.
+- [P3] Demo artwork is independently generated. Node geometry, crop, hierarchy, and contrast are aligned while the underlying pixels remain Open Canvas assets.
+- [P3] Vite still reports the existing bundle-size advisory. This does not affect the audited interaction or rendering.
 
-Provider-backed generation jobs remain a later product milestone and are outside this visual-alignment pass. Prompt editing, submission intent, node creation, graph editing, and project JSON mutation are already interactive.
+## Measured alignment at 716 × 714
 
-## Measured alignment
-
-At 1280 × 994:
-
-- Selected image frame: reference and local both resolve to approximately `x 149.986 / y 415.872 / w 288.353 / h 162.256`.
-- Selected-node quick bar: both resolve to `x -156.648 / y 344.734 / w 901.609 / h 50`.
-- Compact media composer: both resolve to approximately `x -35.838 / y 585.546 / w 660 / h 192`.
-- Center dock: both resolve to `x 470.5 / y 932 / w 339 / h 50`; every dock button and icon uses the measured 32 px and 16 px boxes.
-- Lower-left controls, top-right action group, zoom menu, and tutorial menu match their measured fractional bounds.
-
-At 716 × 994 after **适合屏幕**:
-
-- Canvas zoom: both resolve to `30.842%`, displayed as `31%`.
-- Central image frame: both resolve to approximately `x 33 / y 443.026 / w 191.837 / h 107.947`.
-- Selected quick bar: reference `y 375.609`; local `y 375.617` (1/128 px rounding difference).
-- Media composer: both resolve to approximately `x -201.081 / y 555.908 / w 660 / h 192`.
-- Text composer: both resolve to approximately `x 12.345 / y 555.908 / w 660 / h 203.797`.
-- Text model, utility, cost, and submit controls share the measured footer positions at `x 21.345`, `551.345`, `591.345`, and `631.345`.
-
-## Side-by-side evidence
-
-All paths below are local QA artifacts and intentionally excluded from publication:
-
-1. `docs/qa/alignment-pass-2026-08-20-continuation/127-clean-final-comparison-1280.png`
-2. `docs/qa/alignment-pass-2026-08-20-continuation/139-selected-detail-pass-comparison.png`
-3. `docs/qa/alignment-pass-2026-08-20-continuation/133-zoom-proper-font-comparison.png`
-4. `docs/qa/alignment-pass-2026-08-20-continuation/136-tutorial-detail-comparison.png`
-5. `docs/qa/alignment-pass-2026-08-20-continuation/144-fit-716-comparison.png`
-6. `docs/qa/alignment-pass-2026-08-20-continuation/147-selected-716-comparison.png`
-7. `docs/qa/alignment-pass-2026-08-20-continuation/156-text-data-final-716-comparison.png`
+- Initial viewport: `translate(-39.7956px, 290.195px) scale(0.302744)` in both implementations.
+- First image node: `x 48 / y 290.1949 / w 188.3065 / h 105.9603` in both.
+- Project chip: `x 16 / y 16 / w 129.5625 / h 32` in both.
+- Center dock: `x 189 / y 613 / w 338 / h 49` in both.
+- Lower-left toolbar: `x 16 / y 662 / w 274.1406 / h 40` in both.
+- Selected-node quick bar: `x -308.1016 / y 223.9219 / w 900.5 / h 49` in both.
+- Selected-node composer: `x -187.8467 / y 400.9990 / w 660 / h 191` in both.
+- Arrange viewport: `translate(48px, 48px) scale(0.144803)` in both.
+- Arrange confirmation: `x 50 / y 574 / w 162 / h 88` in both.
+- Add menu: `x 115 / y 124 / w 196 / h 481` in both.
+- Move menu: local `x 169.5 / y 515.7344 / w 168 / h 85.2656`; reference differs only by subpixel font rounding (`1/32px`).
+- Zoom menu: local `x 172.7656 / y 383.1563 / w 186.6094 / h 276.8438`; reference differs by less than `0.06px` vertically.
+- Shortcut sheet: `x 12 / y -3.1953 / w 692 / h 604.1953`; first row is `55.25px` high in both.
+- Role library: `x 68 / y 60 / w 580 / h 594`; feature and carousel regions are `284px` and `236px` high in both.
+- History panel: `x 35.7969 / y 80 / w 644.4 / h 554`; header, tabs, and content regions are `62px`, `48px`, and `443px` high.
 
 ## Interaction verification
 
-- Clicking an image or text node selects it and exposes the correct fixed-size composer.
-- A real pointer drag moved the selected node; its label, handles, edges, and floating controls followed. The fixture was then restored.
-- **适合屏幕** reaches the same 30.842% narrow-view zoom as the reference; zoom-menu pointer focus is released and clicking a node/canvas dismisses the menu.
-- Prompt submission is available for an existing non-empty prompt, matching the repeat-generation affordance.
-- Text nodes include reference thumbnail/count/remove affordances, expand/collapse, model selection, translation, generation cost, and submit controls.
-- Image nodes include contextual portrait, panorama, multi-angle, lighting, grid, high-definition, split, marker, rotate, download, and preview controls.
-- Add, toolbox, material, role, history, shortcut, tutorial, zoom, and asset-manager surfaces open, close, and retain their measured responsive geometry.
-- Handles remain hidden at rest, appear on hover/selection, preserve large hit targets, and support valid dependency/sequence connections.
-- Bottom dock and top chrome use the reference's narrow-window behavior without hiding core canvas controls.
+- Clicking a node focuses it; clicking blank canvas clears selection and floating controls.
+- A real pointer drag moved a node, marked the document unsaved, and `⌘Z` restored its exact original position.
+- Arrange opens a non-destructive preview. **还原** restores positions and viewport; **保留** commits the arranged positions and marks the document unsaved.
+- Add, move, toolbox, material, role, history, shortcut, tutorial, zoom, and asset-manager controls open and close independently.
+- Node handles remain hidden at rest, appear on hover/selection, preserve large hit targets, and occupy the same measured positions as the reference.
+- Zoom, canvas fitting, menus, selected-node controls, and narrow-window chrome remain interactive after repeated open/close cycles.
+
+## Side-by-side evidence
+
+Current local-only evidence is under `docs/qa/fidelity-pass-2026-08-20/`:
+
+1. `58-final-default-comparison-716x714.png`
+2. `60-final-selected-comparison-716x714.png`
+3. `62-final-arrange-comparison-716x714.png`
+4. `24-move-menu-comparison-716x714.png`
+5. `27-toolbox-comparison-716x714.png`
+6. `42-shortcuts-density-comparison-716x714.png`
+7. `48-role-library-fixed-comparison-716x714.png`
+8. `53-history-fixed-comparison-716x714.png`
 
 ## Verification commands
 
-- `npm run test --workspace @open-canvas/preview -- --run` — 22 tests passed.
+- `npm run test --workspace @open-canvas/preview -- --run` — 24 tests passed.
 - `npm run check` — passed.
-- `npm run build --workspace @open-canvas/preview` — passed.
+- `npm run build --workspace @open-canvas/preview` — passed with the existing Vite chunk-size advisory.
 - `git diff --check` — passed.
 
-The known jsdom SVG `NaN` warnings emitted by React Flow remain non-failing test-environment warnings.
+The jsdom SVG `NaN` messages emitted by React Flow remain non-failing test-environment warnings.
 
 final result: passed

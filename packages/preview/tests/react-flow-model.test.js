@@ -11,6 +11,7 @@ import {
   TEXT_NODE_WIDTH,
 } from "../src/project-document.js";
 import {
+  buildAutoLayoutPositions,
   connectionToGraphMutation,
   findOpenNodePosition,
   HANDLE_IDS,
@@ -171,5 +172,28 @@ describe("React Flow projection", () => {
       );
       expect(separated).toBe(true);
     }
+  });
+
+  it("builds a left-to-right arrange preview with reference-sized gaps", () => {
+    const draft = {
+      nodes: [
+        { id: "source", kind: "shot", spec: { mediaKind: "image" } },
+        { id: "text", kind: "composition", spec: { role: "text" } },
+        { id: "image-a", kind: "composition", spec: { role: "composition", mediaType: "image/png" }, title: "高清" },
+        { id: "image-b", kind: "composition", spec: { role: "composition", mediaType: "image/png" }, title: "高清" },
+      ],
+      edges: [
+        { sourceNodeId: "source", targetNodeId: "text" },
+        { sourceNodeId: "source", targetNodeId: "image-a" },
+        { sourceNodeId: "source", targetNodeId: "image-b" },
+      ],
+    };
+
+    expect(buildAutoLayoutPositions(draft)).toEqual({
+      source: { x: 0, y: 72 },
+      text: { x: 414, y: 0 },
+      "image-a": { x: 414, y: 228 },
+      "image-b": { x: 414, y: 450 },
+    });
   });
 });
