@@ -12,24 +12,39 @@ export const HANDLE_IDS = Object.freeze({
   dependencyTarget: "dependency-target",
 });
 
-export function toFlowNodes(draft, selectedNodeId, data = {}) {
+// Canonical documents use compact, portable world coordinates. The studio
+// projects those coordinates into a larger editing surface so cards and their
+// controls remain legible at the default 50% canvas view.
+export const CANVAS_PRESENTATION_SCALE = 2;
+
+export function toFlowNodes(draft, selectedNodeId, data = {}, presentationScale = 1) {
   return draft.nodes.map((node) => {
     const selected = node.id === selectedNodeId;
     const nodeSize = getNodeSize(node);
+    const flowNodeSize = {
+      ...nodeSize,
+      width: nodeSize.width * presentationScale,
+      height: nodeSize.height * presentationScale,
+    };
     return {
       id: node.id,
       type: "creatorNode",
-      position: { ...node.position },
+      position: {
+        x: node.position.x * presentationScale,
+        y: node.position.y * presentationScale,
+      },
       selected,
       deletable: false,
       // The selected node's configuration surfaces intentionally overflow its
       // visual card. Keeping the React Flow hitbox equal to the card prevents
       // that overlay from swallowing clicks and drags on neighboring nodes.
-      width: nodeSize.width,
-      height: nodeSize.height,
+      width: flowNodeSize.width,
+      height: flowNodeSize.height,
       data: {
         ...data,
         nodeSize,
+        flowNodeSize,
+        presentationScale,
         node,
       },
     };
