@@ -5,10 +5,10 @@
 // row. Media nodes intentionally use a 16:9 surface while text nodes retain a
 // square reading surface.
 export const NODE_WIDTH = 311;
-export const NODE_HEIGHT = 201;
-export const COMPOSITION_HEIGHT = 201;
+export const NODE_HEIGHT = 175;
+export const COMPOSITION_HEIGHT = 175;
 export const TEXT_NODE_WIDTH = 175;
-export const TEXT_NODE_HEIGHT = 201;
+export const TEXT_NODE_HEIGHT = 175;
 export const PANORAMA_NODE_WIDTH = 350;
 
 export const STATUS_META = Object.freeze({

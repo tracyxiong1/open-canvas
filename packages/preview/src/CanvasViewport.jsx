@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Background,
   BackgroundVariant,
@@ -6,6 +7,7 @@ import {
   getBezierPath,
   Handle,
   MiniMap,
+  NodeToolbar,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -17,6 +19,7 @@ import {
   Article,
   ArrowLeft,
   ArrowUp,
+  ArrowsInSimple,
   ArrowsOutSimple,
   Atom,
   Binoculars,
@@ -26,7 +29,6 @@ import {
   CornersOut,
   Crop,
   Crosshair,
-  CrosshairSimple,
   Cube,
   Cursor,
   DownloadSimple,
@@ -34,16 +36,15 @@ import {
   Eraser,
   FilmSlate,
   FileText,
-  FlowArrow,
   FolderSimple,
   GridFour,
   GridNine,
   GlobeHemisphereWest,
   Hand,
+  HashStraight,
   HighDefinition,
   ImageSquare,
   Info,
-  Keyboard,
   Lightning,
   LinkSimple,
   MapPin,
@@ -52,7 +53,6 @@ import {
   Minus,
   Mountains,
   PaperPlaneTilt,
-  PaintBrushBroad,
   Pause,
   PencilSimple,
   Plus,
@@ -79,7 +79,19 @@ import {
   WarningCircle,
   X,
 } from "@phosphor-icons/react";
-import { IconView360Number } from "@tabler/icons-react";
+import {
+  IconBadgeHd,
+  IconClock as TablerClock,
+  IconHelpCircle,
+  IconHierarchy2,
+  IconHighlight,
+  IconKeyboard as TablerKeyboard,
+  IconLayoutDashboard,
+  IconPanoramaHorizontal,
+  IconRotate360,
+  IconRoute,
+  IconSunset2,
+} from "@tabler/icons-react";
 import { getNodeSize } from "./project-document.js";
 import {
   connectionToGraphMutation,
@@ -90,9 +102,9 @@ import {
   toFlowNodes,
 } from "./react-flow-model.js";
 
-const MIN_ZOOM = 0.32;
+const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
-const FIT_VIEW_PADDING = { top: "106px", right: "14px", bottom: "132px", left: "14px" };
+const FIT_VIEW_PADDING = 0.1;
 const DEFAULT_CANVAS_ZOOM = 0.5;
 
 const CONTEXT_NODE_ROLES = new Set([
@@ -205,6 +217,9 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
   const canEditPrompt = node.kind === "shot" || isContextNode(node) || (node.spec.role === "composition" && Boolean(node.spec.prompt));
   const portraitMode = quickActionMode === "portrait";
   const [prompt, setPrompt] = useState(canEditPrompt ? node.spec.prompt : "");
+  const [expanded, setExpanded] = useState(false);
+  const [activeContexts, setActiveContexts] = useState(() => new Set());
+  const [referenceVisible, setReferenceVisible] = useState(true);
   const requirements = node.spec.requirements ?? {};
   const upstreamNode = graph?.edges?.map((edge) => edge.targetNodeId === node.id ? graph.nodes.find((item) => item.id === edge.sourceNodeId) : null)
     .find(Boolean);
@@ -214,27 +229,47 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
     setPrompt(canEditPrompt ? node.spec.prompt : "");
   }, [canEditPrompt, node.id, node.specRevision, node.spec]);
 
+  useEffect(() => {
+    setExpanded(false);
+    setActiveContexts(new Set());
+    setReferenceVisible(true);
+  }, [node.id]);
+
   const submitPrompt = (event) => {
     event.preventDefault();
     const nextPrompt = prompt.trim();
-    if (!canEditPrompt || !nextPrompt || nextPrompt === node.spec.prompt) return;
+    if (!canEditPrompt || !nextPrompt) return;
     onUpdatePrompt(node.id, nextPrompt);
   };
 
   if (kind === "text") {
-    return (
+    const textComposer = (
       <section
-        className="node-composer node-composer-text nodrag nowheel"
+        className={`node-composer node-composer-text nodrag nowheel${expanded ? " composer-expanded" : ""}`}
         onClick={(event) => event.stopPropagation()}
         aria-label={`${node.title} 参数`}
+        role={expanded ? "dialog" : undefined}
+        aria-modal={expanded ? "true" : undefined}
       >
         <form onSubmit={submitPrompt}>
-          <div className="text-composer-reference" aria-hidden="true">
-            <span className="text-composer-reference-thumb">
-              {upstreamPreview ? <img src={upstreamPreview} alt="" draggable="false" /> : <ImageSquare weight="fill" />}
-            </span>
-            <span className="text-composer-reference-count">1</span>
-          </div>
+          <button
+            className="composer-expand-button"
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            aria-label={expanded ? "收起参数面板" : "展开参数面板"}
+            title={expanded ? "收起" : "展开"}
+          >
+            {expanded ? <ArrowsInSimple aria-hidden="true" /> : <ArrowsOutSimple aria-hidden="true" />}
+          </button>
+          {referenceVisible ? (
+            <div className="text-composer-reference">
+              <span className="text-composer-reference-thumb" aria-hidden="true">
+                {upstreamPreview ? <img src={upstreamPreview} alt="" draggable="false" /> : <ImageSquare weight="fill" />}
+              </span>
+              <span className="text-composer-reference-count" aria-hidden="true">1</span>
+              <button className="text-composer-reference-remove" type="button" onClick={() => setReferenceVisible(false)} aria-label="移除参考素材"><X aria-hidden="true" /></button>
+            </div>
+          ) : null}
           <textarea
             className="text-composer-prompt"
             id={`prompt-${node.id}`}
@@ -249,37 +284,85 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
           />
           <footer className="text-composer-tools">
             <button className="text-composer-model" type="button" aria-label="选择理解模型">
-              <Sparkle weight="fill" aria-hidden="true" /><span>视觉理解 3.1</span><CaretRight aria-hidden="true" />
+              <span className="text-composer-model-copy"><Sparkle weight="fill" aria-hidden="true" /><span>VLM 3.1</span></span><CaretRight aria-hidden="true" />
             </button>
             <span className="text-composer-spacer" />
-            <button className="text-composer-utility" type="button" aria-label="翻译文本"><TextT aria-hidden="true" /></button>
-            <button className="text-composer-utility" type="button" aria-label="增强文本"><Sparkle weight="fill" aria-hidden="true" /></button>
-            <button
-              className="text-composer-submit"
-              type="submit"
-              disabled={!canEditPrompt || !prompt.trim() || prompt.trim() === node.spec.prompt}
-              aria-label="应用提示词"
-            >
-              <ArrowUp weight="bold" aria-hidden="true" />
-            </button>
+            <span className="text-composer-tools-end">
+              <button className="text-composer-utility" type="button" aria-label="翻译文本"><TextT aria-hidden="true" /></button>
+              <span className="text-composer-cost" aria-label="本次生成消耗 6 点"><Lightning weight="fill" aria-hidden="true" /><span>6</span></span>
+              <button
+                className="text-composer-submit"
+                type="submit"
+                disabled={!canEditPrompt || !prompt.trim()}
+                aria-label="应用提示词"
+              >
+                <ArrowUp weight="bold" aria-hidden="true" />
+              </button>
+            </span>
           </footer>
         </form>
       </section>
     );
+    if (!expanded) return textComposer;
+    const portalRoot = typeof document === "undefined" ? null : document.querySelector(".canvas-viewport");
+    if (!portalRoot) return textComposer;
+    return createPortal(
+      <>
+        <button className="composer-expanded-backdrop" type="button" aria-label="点击空白处收起参数面板" onClick={() => setExpanded(false)} />
+        {textComposer}
+      </>,
+      portalRoot,
+    );
   }
 
-  return (
+  const toggleContext = (context) => {
+    setActiveContexts((current) => {
+      const next = new Set(current);
+      if (next.has(context)) next.delete(context);
+      else next.add(context);
+      return next;
+    });
+  };
+
+  const contextActions = [
+    { label: "参考", icon: Plus },
+    { label: "标记", icon: MapPin },
+    { label: "风格", icon: Cube },
+    ...(portraitMode ? [{ label: "聚焦", icon: Crosshair }] : []),
+  ];
+
+  const mediaComposer = (
     <section
-      className={`node-composer node-composer-media nodrag nowheel${portraitMode ? " portrait-mode" : ""}`}
+      className={`node-composer node-composer-media nodrag nowheel${portraitMode ? " portrait-mode" : ""}${expanded ? " composer-expanded" : ""}`}
       onClick={(event) => event.stopPropagation()}
       aria-label={`${node.title} 参数`}
+      role={expanded ? "dialog" : undefined}
+      aria-modal={expanded ? "true" : undefined}
     >
       <form onSubmit={submitPrompt}>
-        <div className="composer-context-row" aria-hidden="true">
-          <span><Plus weight="bold" />参考</span>
-          <span><MapPin />标记</span>
-          <span><Cube />风格</span>
-          {portraitMode ? <span><Crosshair />聚焦</span> : null}
+        <button
+          className="composer-expand-button"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          aria-label={expanded ? "收起参数面板" : "展开参数面板"}
+          title={expanded ? "收起" : "展开"}
+        >
+          {expanded ? <ArrowsInSimple aria-hidden="true" /> : <ArrowsOutSimple aria-hidden="true" />}
+        </button>
+        <div className="composer-context-row">
+          {contextActions.map(({ label, icon: Icon }) => (
+            <button
+              className={activeContexts.has(label) ? "active" : ""}
+              type="button"
+              key={label}
+              onClick={() => toggleContext(label)}
+              aria-label={label}
+              aria-pressed={activeContexts.has(label)}
+            >
+              <Icon weight={label === "参考" ? "bold" : "regular"} aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
         </div>
         <div className="composer-input-row">
           <span className={`composer-type composer-type-${kind}`} aria-hidden="true"><NodeLabelIcon kind={kind} /></span>
@@ -320,7 +403,7 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
               <button
                 className="composer-submit"
                 type="submit"
-                disabled={!canEditPrompt || !prompt.trim() || prompt.trim() === node.spec.prompt}
+                disabled={!canEditPrompt || !prompt.trim()}
                 aria-label="应用提示词"
               >
                 <ArrowUp weight="bold" aria-hidden="true" />
@@ -330,6 +413,17 @@ function NodeComposer({ node, kind, graph, onUpdatePrompt, quickActionMode }) {
         </footer>
       </form>
     </section>
+  );
+
+  if (!expanded) return mediaComposer;
+  const portalRoot = typeof document === "undefined" ? null : document.querySelector(".canvas-viewport");
+  if (!portalRoot) return mediaComposer;
+  return createPortal(
+    <>
+      <button className="composer-expanded-backdrop" type="button" aria-label="点击空白处收起参数面板" onClick={() => setExpanded(false)} />
+      {mediaComposer}
+    </>,
+    portalRoot,
   );
 }
 
@@ -412,20 +506,20 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
   };
   const actions = kind === "image"
     ? [
-      { label: "全景", icon: IconView360Number, tooltip: "基于当前场景创建720°全景图" },
+      { label: "全景", icon: IconPanoramaHorizontal, tooltip: "基于当前场景创建全景图" },
       { label: "多角度", icon: Atom, tooltip: "多角度" },
-      { label: "打光", icon: SlidersHorizontal, tooltip: "打光" },
+      { label: "打光", icon: IconSunset2, tooltip: "打光" },
       { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
-      { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
-      { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
+      { label: "高清", icon: IconBadgeHd, caret: true, tooltip: "清晰度设置" },
+      { label: "宫格切分", icon: HashStraight, caret: true, tooltip: "宫格切分" },
     ]
     : [
       { label: "运动", icon: Sparkle, tooltip: "运动控制" },
       { label: "多角度", icon: Atom, tooltip: "多角度" },
-      { label: "打光", icon: SlidersHorizontal, tooltip: "打光" },
+      { label: "打光", icon: IconSunset2, tooltip: "打光" },
       { label: "九宫格", icon: GridNine, caret: true, tooltip: "九宫格布局" },
-      { label: "高清", icon: HighDefinition, caret: true, tooltip: "清晰度设置" },
-      { label: "宫格切分", icon: GridNine, caret: true, tooltip: "宫格切分" },
+      { label: "高清", icon: IconBadgeHd, caret: true, tooltip: "清晰度设置" },
+      { label: "宫格切分", icon: HashStraight, caret: true, tooltip: "宫格切分" },
     ];
 
   const renderAction = ({ label, icon: Icon, caret, tooltip }) => {
@@ -547,10 +641,10 @@ function NodeQuickActions({ kind, node, className = "", style, openMenu = null, 
       {renderAction(actions[4])}
       {renderAction(actions[5])}
       <span className="quick-actions-divider" />
-      <button type="button" aria-label="画笔编辑" data-tooltip="画笔编辑"><PaintBrushBroad aria-hidden="true" /></button>
-      <button type="button" aria-label="定位主体" data-tooltip="定位主体"><CrosshairSimple aria-hidden="true" /></button>
-      <button type="button" aria-label="下载素材" data-tooltip="下载素材"><DownloadSimple aria-hidden="true" /></button>
-      <button type="button" aria-label="打开素材预览" data-tooltip="打开素材预览"><ArrowsOutSimple aria-hidden="true" /></button>
+      <button type="button" aria-label="标注" data-tooltip="标注"><IconHighlight aria-hidden="true" /></button>
+      <button type="button" aria-label="旋转" data-tooltip="旋转"><IconRotate360 aria-hidden="true" /></button>
+      <button type="button" aria-label="下载" data-tooltip="下载"><DownloadSimple aria-hidden="true" /></button>
+      <button type="button" aria-label="预览" data-tooltip="预览"><ArrowsOutSimple aria-hidden="true" /></button>
     </div>
   );
 }
@@ -586,6 +680,7 @@ function CanvasNode({ data, selected }) {
     onFocusNode,
     onUpdatePrompt,
     quickActionMode,
+    viewportZoom = DEFAULT_CANVAS_ZOOM,
   } = data;
   const kind = getSurfaceKind(node);
   const isShot = node.kind === "shot";
@@ -652,7 +747,17 @@ function CanvasNode({ data, selected }) {
           <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
         </div>
 
-        {selected ? <NodeComposer node={node} kind={kind} graph={graph} onUpdatePrompt={onUpdatePrompt} quickActionMode={quickActionMode} /> : null}
+        {selected ? (
+          <NodeToolbar
+            className="node-composer-toolbar"
+            isVisible
+            position={Position.Bottom}
+            offset={16 * viewportZoom}
+            align="center"
+          >
+            <NodeComposer node={node} kind={kind} graph={graph} onUpdatePrompt={onUpdatePrompt} quickActionMode={quickActionMode} />
+          </NodeToolbar>
+        ) : null}
       </div>
     </article>
   );
@@ -720,9 +825,15 @@ const TOOLBOX_PRESETS = Object.freeze([
 
 const ROLE_PRESETS = Object.freeze([
   { title: "蓝调肖像", image: "/assets/character-portrait-v1.png" },
-  { title: "工作室设定", image: "/assets/character-portrait-v1.png" },
-  { title: "自然表情", image: "/assets/character-portrait-v1.png" },
-  { title: "光线档案", image: "/assets/character-portrait-v1.png" },
+  { title: "精英主角", image: "/assets/character-portrait-v1.png" },
+  { title: "温柔熟男", image: "/assets/character-portrait-v1.png" },
+  { title: "清冷女主", image: "/assets/character-portrait-v1.png" },
+  { title: "古风男主", image: "/assets/character-portrait-v1.png" },
+  { title: "古风女主", image: "/assets/character-portrait-v1.png" },
+  { title: "都市反派", image: "/assets/character-portrait-v1.png" },
+  { title: "长辈角色", image: "/assets/character-portrait-v1.png" },
+  { title: "生活方式", image: "/assets/character-portrait-v1.png" },
+  { title: "时尚青年", image: "/assets/character-portrait-v1.png" },
 ]);
 
 function CanvasOverlay({ onClose }) {
@@ -786,8 +897,8 @@ function LibraryPopover({ onClose }) {
   return (
     <section className="dock-library-popover" role="dialog" aria-labelledby="library-title" data-canvas-control>
       <h2 id="library-title">素材库</h2>
-      <button type="button" onClick={onClose}><span className="library-entry-icon"><Cube weight="regular" aria-hidden="true" /></span><span>风格库</span><small>NEW</small></button>
-      <button type="button" onClick={onClose}><span className="library-entry-icon"><GlobeHemisphereWest weight="regular" aria-hidden="true" /></span><span>特效库</span><small>NEW</small></button>
+      <button type="button" onClick={onClose}><span className="library-entry-icon"><Cube weight="regular" aria-hidden="true" /></span><span className="library-entry-copy"><strong>风格库</strong><span>新增风格节点</span></span><small>NEW</small></button>
+      <button type="button" onClick={onClose}><span className="library-entry-icon"><GlobeHemisphereWest weight="regular" aria-hidden="true" /></span><span className="library-entry-copy"><strong>特效库</strong><span>新增特效节点</span></span><small>NEW</small></button>
     </section>
   );
 }
@@ -1021,13 +1132,13 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
             </span>
           ) : null}
         </span>
-        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><ShareNetwork weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "toolbox" ? "active" : ""} type="button" onClick={(event) => togglePanel("toolbox", event)} aria-label="打开工具箱" data-tooltip="打开工具箱"><IconHierarchy2 aria-hidden="true" /></button>
         <button className={openPanel === "library" ? "active" : ""} type="button" onClick={(event) => togglePanel("library", event)} aria-label="素材库" data-tooltip="素材库"><Shapes weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "roles" ? "active" : ""} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><Binoculars weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "history" ? "active" : ""} type="button" onClick={(event) => togglePanel("history", event)} aria-label="历史记录" data-tooltip="历史记录"><Clock weight="regular" aria-hidden="true" /></button>
+        <button className={`dock-role-button ${openPanel === "roles" ? "active" : ""}`} type="button" onClick={(event) => togglePanel("roles", event)} aria-label="角色库" data-tooltip="角色库"><Binoculars weight="regular" aria-hidden="true" /><span className="dock-notification-dot" aria-hidden="true" /></button>
+        <button className={openPanel === "history" ? "active" : ""} type="button" onClick={(event) => togglePanel("history", event)} aria-label="历史记录" data-tooltip="历史记录"><TablerClock aria-hidden="true" /></button>
         <span className="dock-divider" />
-        <button className={openPanel === "shortcuts" ? "active" : ""} type="button" onClick={(event) => togglePanel("shortcuts", event)} aria-label="快捷键" data-tooltip="快捷键"><Keyboard weight="regular" aria-hidden="true" /></button>
-        <button className={openPanel === "tutorial" ? "active" : ""} type="button" onClick={(event) => togglePanel("tutorial", event)} aria-label="教程" data-tooltip="教程"><Question weight="regular" aria-hidden="true" /></button>
+        <button className={openPanel === "shortcuts" ? "active" : ""} type="button" onClick={(event) => togglePanel("shortcuts", event)} aria-label="快捷键" data-tooltip="快捷键"><TablerKeyboard aria-hidden="true" /></button>
+        <button className={openPanel === "tutorial" ? "active" : ""} type="button" onClick={(event) => togglePanel("tutorial", event)} aria-label="教程" data-tooltip="教程"><IconHelpCircle aria-hidden="true" /></button>
       </div>
     </>
   );
@@ -1035,6 +1146,11 @@ function CanvasDock({ tool, onToolChange, onAddNode, draft, onSelectNode }) {
 
 function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoom }) {
   const [inputValue, setInputValue] = useState(() => String(Math.round(zoom * 100)));
+  const runPointerAction = (event, action) => {
+    const button = event.currentTarget;
+    action();
+    if (event.detail !== 0) window.requestAnimationFrame(() => button.blur());
+  };
 
   useEffect(() => {
     setInputValue(String(Math.round(zoom * 100)));
@@ -1046,7 +1162,7 @@ function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoo
       setInputValue(String(Math.round(zoom * 100)));
       return;
     }
-    onSetZoom(Math.min(800, Math.max(32, parsed)) / 100);
+    onSetZoom(Math.min(800, Math.max(10, parsed)) / 100);
   };
 
   if (!open) return null;
@@ -1072,11 +1188,11 @@ function ZoomOptions({ open, zoom, onClose, onFit, onZoomIn, onZoomOut, onSetZoo
           <span>%</span>
         </label>
       </div>
-      <button className="zoom-menu-row" type="button" onClick={onZoomIn} aria-label="放大画布"><span>放大</span><span className="zoom-key-combo"><span>⌘</span><span>+</span></span></button>
-      <button className="zoom-menu-row" type="button" onClick={onZoomOut} aria-label="缩小画布"><span>缩小</span><span className="zoom-key-combo"><span>⌘</span><span>−</span></span></button>
-      <button className="zoom-menu-row" type="button" onClick={onFit} aria-label="适合屏幕"><span>适合屏幕</span><span className="zoom-key-combo"><span>⌘</span><span>0</span></span></button>
+      <button className="zoom-menu-row" type="button" onClick={(event) => runPointerAction(event, onZoomIn)} aria-label="放大画布"><span>放大</span><span className="zoom-key-combo"><span>⌘</span><span>+</span></span></button>
+      <button className="zoom-menu-row" type="button" onClick={(event) => runPointerAction(event, onZoomOut)} aria-label="缩小画布"><span>缩小</span><span className="zoom-key-combo"><span>⌘</span><span>−</span></span></button>
+      <button className="zoom-menu-row" type="button" onClick={(event) => runPointerAction(event, onFit)} aria-label="适合屏幕"><span>适合屏幕</span><span className="zoom-key-combo"><span>⌘</span><span>0</span></span></button>
       <span className="zoom-menu-divider" aria-hidden="true" />
-      {[0.5, 1, 8].map((value) => <button className="zoom-menu-row" key={value} type="button" onClick={() => onSetZoom(value)}>{`缩放至${Math.round(value * 100)}%`}</button>)}
+      {[0.5, 1, 8].map((value) => <button className="zoom-menu-row" key={value} type="button" onClick={(event) => runPointerAction(event, () => onSetZoom(value))}>{`缩放至${Math.round(value * 100)}%`}</button>)}
     </div>
   );
 }
@@ -1158,6 +1274,21 @@ function CanvasAssetManager({ open, draft, selectedNodeId, onClose, onFocusNode 
 
 function CanvasAside({ draft, selectedNodeId, onFocusNode, assetManagerOpen, onAssetManagerChange, showEdges, onToggleEdges, snapToGrid, onToggleSnap, showMinimap, onToggleMinimap, zoom, onZoomIn, onZoomOut, onSetZoom, onFit, onArrange }) {
   const [zoomOpen, setZoomOpen] = useState(false);
+  useEffect(() => {
+    if (!zoomOpen) return undefined;
+    const closeOnOutsidePointer = (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".canvas-zoom-options, .zoom-value")) setZoomOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setZoomOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [zoomOpen]);
   const releasePointerFocus = (event) => {
     if (event.detail === 0) return;
     const button = event.currentTarget;
@@ -1170,9 +1301,9 @@ function CanvasAside({ draft, selectedNodeId, onFocusNode, assetManagerOpen, onA
         <>
           <div className="canvas-aside" data-canvas-control>
             <button className="asset-manage-button" type="button" onClick={(event) => { onAssetManagerChange(true); releasePointerFocus(event); }} aria-label="资产管理" title="资产管理"><SidebarSimple weight="regular" aria-hidden="true" /><span>资产管理</span></button>
-            <button type="button" onClick={(event) => { onArrange(); releasePointerFocus(event); }} aria-label="整理画布，Alt+Shift+F" data-tooltip="整理画布Alt+Shift+F"><GridFour weight="regular" aria-hidden="true" /></button>
+            <button type="button" onClick={(event) => { onArrange(); releasePointerFocus(event); }} aria-label="整理画布，Alt+Shift+F" data-tooltip="整理画布Alt+Shift+F"><IconLayoutDashboard aria-hidden="true" /></button>
             <button className={showMinimap ? "active" : ""} type="button" onClick={(event) => { onToggleMinimap(); releasePointerFocus(event); }} aria-pressed={showMinimap} aria-label="切换小地图" data-tooltip="切换小地图"><MapPinArea weight="regular" aria-hidden="true" /></button>
-            <button className={!showEdges ? "active" : ""} type="button" onClick={(event) => { onToggleEdges(); releasePointerFocus(event); }} aria-pressed={!showEdges} aria-label="隐藏节点连线" data-tooltip="隐藏节点连线"><FlowArrow weight="regular" aria-hidden="true" /></button>
+            <button className={!showEdges ? "active" : ""} type="button" onClick={(event) => { onToggleEdges(); releasePointerFocus(event); }} aria-pressed={!showEdges} aria-label="隐藏节点连线" data-tooltip="隐藏节点连线"><IconRoute aria-hidden="true" /></button>
             <button className={snapToGrid ? "active" : ""} type="button" onClick={(event) => { onToggleSnap(); releasePointerFocus(event); }} aria-pressed={snapToGrid} aria-label="网格吸附" data-tooltip="网格吸附"><LinkSimple weight="regular" aria-hidden="true" /></button>
             <button className="zoom-value" type="button" onClick={(event) => { setZoomOpen((value) => !value); releasePointerFocus(event); }} aria-expanded={zoomOpen} aria-label="缩放选项" data-tooltip="缩放选项">{Math.round(zoom * 100)}%</button>
           </div>
@@ -1248,7 +1379,7 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     setQuickActionModes((current) => ({ ...current, [selectedNodeId]: mode }));
   }, [selectedNodeId]);
 
-  const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, graph: draft, quickActionMode }), [draft, focusNode, onOpenPreview, onUpdatePrompt, quickActionMode]);
+  const nodeData = useMemo(() => ({ onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, graph: draft, quickActionMode, viewportZoom: zoom }), [draft, focusNode, onOpenPreview, onUpdatePrompt, quickActionMode, zoom]);
   const projectedNodes = useMemo(
     () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE),
     [draft, nodeData, selectedNodeId],
@@ -1267,9 +1398,9 @@ function CanvasViewportInner({ draft, selectedNodeId, onSelectNode, onOpenPrevie
     const nodeRect = node.getBoundingClientRect();
     setQuickActionsPosition({
       left: nodeRect.left - viewportRect.left + nodeRect.width / 2,
-      top: nodeRect.top - viewportRect.top - 47,
+      top: nodeRect.top - viewportRect.top - (60 + zoom * 24),
     });
-  }, []);
+  }, [zoom]);
 
   useLayoutEffect(() => {
     if (!selectedNode || (selectedNodeKind !== "image" && selectedNodeKind !== "video")) {

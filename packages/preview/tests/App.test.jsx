@@ -29,7 +29,13 @@ describe("editable open canvas", () => {
     expect(selectedNode).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("region", { name: "图片节点 2 参数" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "人像质感调节" })).toBeInTheDocument();
-    for (const label of ["全景", "多角度", "打光", "九宫格", "高清", "宫格切分", "画笔编辑", "下载素材"]) {
+    for (const label of ["参考", "标记", "风格", "聚焦"]) {
+      const contextAction = screen.getByRole("button", { name: label });
+      expect(contextAction).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(contextAction);
+      expect(contextAction).toHaveAttribute("aria-pressed", "true");
+    }
+    for (const label of ["全景", "多角度", "打光", "九宫格", "高清", "宫格切分", "标注", "旋转", "下载", "预览"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
@@ -37,6 +43,11 @@ describe("editable open canvas", () => {
     );
     expect(screen.getByText("2048 × 1152")).toBeInTheDocument();
     expect(screen.getByText("已保存")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "展开参数面板" }));
+    expect(screen.getByRole("dialog", { name: "图片节点 2 参数" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "收起参数面板" }));
+    expect(screen.queryByRole("dialog", { name: "图片节点 2 参数" })).not.toBeInTheDocument();
   });
 
   it("switches drafts and opens a generated asset preview", async () => {
@@ -231,6 +242,30 @@ describe("editable open canvas", () => {
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
       "写下这段创作的主题、情绪或叙事目标。",
     );
+  });
+
+  it("matches the text-node composer anatomy and dismisses zoom on canvas interaction", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "缩放选项" }));
+    expect(screen.getByRole("menu", { name: "缩放选项" })).toBeInTheDocument();
+
+    const textNode = await screen.findByRole("button", { name: /文本节点 1，待生成/ });
+    fireEvent.pointerDown(textNode);
+    fireEvent.click(textNode);
+    expect(screen.queryByRole("menu", { name: "缩放选项" })).not.toBeInTheDocument();
+
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("测试镜头：城市天际线，夜景。");
+    expect(screen.getByText("VLM 3.1")).toBeInTheDocument();
+    expect(screen.getByLabelText("本次生成消耗 6 点")).toHaveTextContent("6");
+    expect(screen.getByRole("button", { name: "应用提示词" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "移除参考素材" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开参数面板" }));
+    expect(screen.getByRole("dialog", { name: "文本节点 1 参数" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "收起参数面板" }));
+    expect(screen.queryByRole("dialog", { name: "文本节点 1 参数" })).not.toBeInTheDocument();
   });
 
   it("renders queued, running, and failed states from validated job projections", async () => {
