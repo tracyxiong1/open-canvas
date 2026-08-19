@@ -124,7 +124,7 @@ describe("editable open canvas", () => {
 
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const menu = screen.getByRole("menu", { name: "添加画布节点" });
-    for (const label of ["文本", "图片", "视频", "智能剪辑", "导演台", "逐帧分析", "音频", "脚本", "素材库", "上传", "从生成历史中选择"]) {
+    for (const label of ["文本", "图片", "视频", "智能剪辑", "导演台", "逐帧拉片", "音频", "脚本", "素材库", "上传", "从生成历史选择"]) {
       expect(within(menu).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
 
