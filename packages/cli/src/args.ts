@@ -15,12 +15,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]!;
+    if (value === "-h") {
+      flags.set("help", true);
+      continue;
+    }
     if (!value.startsWith("--")) {
       positionals.push(value);
       continue;
     }
     const name = value.slice(2);
-    if (name === "no-open") {
+    if (name === "no-open" || name === "help") {
       flags.set(name, true);
       continue;
     }

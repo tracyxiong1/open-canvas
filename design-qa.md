@@ -1,58 +1,70 @@
-# JIM-7 Design QA
+# Open Canvas visual fidelity QA — 2026-08-20
 
-**Findings**
+## Scope
 
-- 未发现仍需处理的 P0、P1 或 P2 差异。实现保留了参考证据中的固定控制层、点阵画布、同坐标系节点/参数/连线、选中端口、移动端横向画布语义和素材直观预览，同时使用 Creator Canvas 自有领域结构、文案、图标和原创素材。
+- **Reference:** the user-authorized live creative canvas, exercised in the chosen in-app browser.
+- **Implementation:** `packages/preview`, backed by the independent Open Canvas document model.
+- **Primary viewport:** 716 × 714 CSS px at 1× density.
+- **Audited states:** default canvas, selected image node, add/move/zoom menus, toolbox, material library, tutorial, shortcuts, role library, history assets, and arrange preview.
+- **Evidence:** live reference and local captures were made at the same viewport and state, then judged side by side. Captures remain in local-only QA folders.
 
-**Comparison Artifacts**
+No reference logo, session data, source media, or proprietary icon asset ships with Open Canvas.
 
-- Source visual truth: `docs/references/libtv/desktop-1440x900-video-parameters.png`, `docs/references/libtv/desktop-1440x900-job-complete.png`, `docs/references/libtv/mobile-390x844-video-selected.png` and the interaction constraints in `docs/references/libtv/README.md`.
-- Browser-rendered implementation: `docs/qa/jim-7/desktop-night-selected.png`, `docs/qa/jim-7/desktop-main-overview.png`, `docs/qa/jim-7/desktop-asset-preview.png`, `docs/qa/jim-7/mobile-night-selected.png`, `docs/qa/jim-7/mobile-main-fit.png`.
-- Combined comparison inputs: `docs/qa/jim-7/compare-desktop-selected.png`, `docs/qa/jim-7/compare-desktop-generated.png`, `docs/qa/jim-7/compare-mobile-selected.png`.
-- Desktop normalization: source and implementation are both 1440 × 900 px at a 1440 × 900 CSS viewport; effective density is 1:1.
-- Mobile normalization: source and implementation are both 390 × 844 px at a 390 × 844 CSS viewport; effective density is 1:1.
-- States: desktop night variation with a dirty shot selected and parameters expanded; desktop main draft with four succeeded nodes and dependency graph; expanded generated-asset preview; mobile dirty shot selected; mobile main draft fit to screen.
+## Result
 
-**Full-view Comparison Evidence**
+No P0, P1, or P2 issue remains in the audited high-priority canvas and toolbar states.
 
-- Desktop selected-state comparison confirms that the node, ports, parameter panel and edges move in one transformed layer while the header, legend, tool dock, zoom dock and read-only notice stay fixed.
-- Desktop generated-state comparison confirms clear succeeded badges, in-node 16:9 imagery, sequence/dependency separation and the composition result. The denser four-node layout is intentional product data, not source-design drift.
-- Mobile comparison confirms the same canvas coordinate system is retained rather than reflowed into a page; the selected node and parameter panel are reachable, fixed controls remain visible, and fit-to-screen provides a complete overview.
+- [P3] Product mark and a few action-icon silhouettes intentionally use the closest Phosphor/Tabler alternatives instead of reference-specific vectors.
+- [P3] Demo artwork is independently generated. Node geometry, crop, hierarchy, and contrast are aligned while the underlying pixels remain Open Canvas assets.
+- [P3] Vite still reports the existing bundle-size advisory. This does not affect the audited interaction or rendering.
 
-**Focused Region Comparison Evidence**
+## Measured alignment at 716 × 714
 
-- Node headers, status badges, ports, prompt field, parameter grid and routing/fingerprint footer were readable in the selected-state combined inputs; no additional crop was needed.
-- Generated images were checked both in-node and in the expanded 16:9 preview. Crops remain sharp and proportional, with no protected reference asset reuse.
-- The partial pink circle at the right edge of Chrome captures and the console errors whose URLs begin with `chrome-extension://` come from installed browser extensions; neither is present in the app DOM or source bundle and both were excluded from implementation findings.
+- Initial viewport: `translate(-39.7956px, 290.195px) scale(0.302744)` in both implementations.
+- First image node: `x 48 / y 290.1949 / w 188.3065 / h 105.9603` in both.
+- Project chip: `x 16 / y 16 / w 129.5625 / h 32` in both.
+- Center dock: `x 189 / y 613 / w 338 / h 49` in both.
+- Lower-left toolbar: `x 16 / y 662 / w 274.1406 / h 40` in both.
+- Selected-node quick bar: `x -308.1016 / y 223.9219 / w 900.5 / h 49` in both.
+- Selected-node composer: `x -187.8467 / y 400.9990 / w 660 / h 191` in both.
+- Arrange viewport: `translate(48px, 48px) scale(0.144803)` in both.
+- Arrange confirmation: `x 50 / y 574 / w 162 / h 88` in both.
+- Add menu: `x 115 / y 124 / w 196 / h 481` in both.
+- Move menu: local `x 169.5 / y 515.7344 / w 168 / h 85.2656`; reference differs only by subpixel font rounding (`1/32px`).
+- Zoom menu: local `x 172.7656 / y 383.1563 / w 186.6094 / h 276.8438`; reference differs by less than `0.06px` vertically.
+- Shortcut sheet: `x 12 / y -3.1953 / w 692 / h 604.1953`; first row is `55.25px` high in both.
+- Role library: `x 68 / y 60 / w 580 / h 594`; feature and carousel regions are `284px` and `236px` high in both.
+- History panel: `x 35.7969 / y 80 / w 644.4 / h 554`; header, tabs, and content regions are `62px`, `48px`, and `443px` high.
 
-**Required Fidelity Surfaces**
+## Interaction verification
 
-- Fonts and typography: system/Inter fallbacks produce a restrained UI hierarchy; headings, metadata and monospaced identifiers remain distinguishable at desktop and mobile scales without broken wrapping.
-- Spacing and layout rhythm: node widths, compact panels, dotted canvas, fixed docks and mobile overflow behavior track the approved evidence. Radii and borders are consistently tokenized.
-- Colors and visual tokens: neutral near-black surfaces, quiet borders, cyan selection/dependency accents and semantic green/amber/purple/red states maintain contrast without borrowing source branding.
-- Image quality and asset fidelity: all visible stills are original generated WebP assets sized for 16:9 node and dialog crops; icons come from one open-source Phosphor family; no CSS/inline-SVG replacement art is used.
-- Copy and content: UI copy describes the standalone read-only project preview. Project, draft, prompt, route and generation data come from the canonical document adapter.
-- Accessibility and interaction: semantic buttons/select/dialog labels, keyboard selection and escape handling, visible focus, reduced-motion support and practical mobile toolbar targets are present.
+- Clicking a node focuses it; clicking blank canvas clears selection and floating controls.
+- A real pointer drag moved a node, marked the document unsaved, and `⌘Z` restored its exact original position.
+- Arrange opens a non-destructive preview. **还原** restores positions and viewport; **保留** commits the arranged positions and marks the document unsaved.
+- Add, move, toolbox, material, role, history, shortcut, tutorial, zoom, and asset-manager controls open and close independently.
+- Node handles remain hidden at rest, appear on hover/selection, preserve large hit targets, and occupy the same measured positions as the reference.
+- Zoom, canvas fitting, menus, selected-node controls, and narrow-window chrome remain interactive after repeated open/close cycles.
 
-**Comparison History**
+## Side-by-side evidence
 
-- Iteration 1 — P2 mobile positioning: the first 390 × 844 capture laid out around the first shot before the asynchronous initial selection moved to the dirty second shot, leaving the active node mostly off-screen.
-- Fix: the viewport now keys mobile layout to both draft and selected node, recenters after selection, and responds when crossing the mobile breakpoint. A regression test asserts the initial mobile view transform.
-- Post-fix evidence: `docs/qa/jim-7/mobile-night-selected.png` and `docs/qa/jim-7/compare-mobile-selected.png`; the selected dirty shot, both ports and its parameter panel are visible at the target viewport.
+Current local-only evidence is under `docs/qa/fidelity-pass-2026-08-20/`:
 
-**Open Questions**
+1. `58-final-default-comparison-716x714.png`
+2. `60-final-selected-comparison-716x714.png`
+3. `62-final-arrange-comparison-716x714.png`
+4. `24-move-menu-comparison-716x714.png`
+5. `27-toolbox-comparison-716x714.png`
+6. `42-shortcuts-density-comparison-716x714.png`
+7. `48-role-library-fixed-comparison-716x714.png`
+8. `53-history-fixed-comparison-716x714.png`
 
-- The approved reference has no Creator Canvas composition equivalent and no retainable queued/failed visual captures. Composition layout and all five generation-state semantics therefore follow `docs/schema/canvas-document-v1.schema.json` and the canonical examples, as required.
+## Verification commands
 
-**Implementation Checklist**
+- `npm run test --workspace @open-canvas/preview -- --run` — 24 tests passed.
+- `npm run check` — passed.
+- `npm run build --workspace @open-canvas/preview` — passed with the existing Vite chunk-size advisory.
+- `git diff --check` — passed.
 
-- [x] Desktop and mobile source/implementation pairs compared at identical viewports.
-- [x] Pan, zoom, fit, draft switch, node selection, edge toggle and asset dialog exercised in Chrome.
-- [x] Application console checked; no error or warning originated from `localhost` (extension-only errors were observed and classified above).
-- [x] Unit, adapter, responsive and production-build checks completed.
-
-**Follow-up Polish**
-
-- P3: a future real asset resolver can replace the fixture-only preview URL map when the CLI delivery defines project-relative binary serving. This does not affect the current read-only fixture acceptance path.
+The jsdom SVG `NaN` messages emitted by React Flow remain non-failing test-environment warnings.
 
 final result: passed

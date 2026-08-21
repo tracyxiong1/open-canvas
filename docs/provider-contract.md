@@ -1,12 +1,21 @@
 # Provider routing and BYOK adapter contract
 
-Status: MVP specification for JIM-10.
+状态：本地 MVP 已实现的适配器与路由契约。
 
-This document defines the boundary between Creator Canvas core and generation
+This document defines the boundary between Open Canvas core and generation
 providers. It is intentionally independent of any provider SDK. The canvas
 document remains the source of truth for requested work, resolved routes, job
 state, and durable asset references; adapters only translate between this
 contract and provider APIs.
+
+当前实现位于 packages/core/src/providers.ts 与
+packages/cli/src/commands.ts：
+
+- Core 提供纯能力匹配、路由选择、规范化快照和适配器实现，不读取环境变量。
+- CLI 在路由确定后检查环境变量、构造临时凭证，并在本地进程内读取项目素材字节。
+- 预览端不接收凭证、供应商响应或临时下载地址。
+- 当前可执行的真实路径为 OpenAI 文生图/项目内参考图生成，以及 Gemini Omni Flash 的文生视频和图生视频。
+- composition 节点当前不执行本地剪辑或渲染；CLI 会要求先生成底层镜头。该限制避免将生成式视频误表示为已完成剪辑。
 
 ## Acceptance trace
 
@@ -15,7 +24,7 @@ contract and provider APIs.
 | Image and video jobs | One normalized request and one adapter lifecycle cover both media kinds. |
 | Local BYOK lookup | Adapters declare an environment-variable name; a local credential resolver returns an opaque secret only after routing. |
 | Capability matching | Routing rejects candidates that cannot meet every required input and output constraint. |
-| AI-selected defaults | The planner supplies an optional `aiChoice`; the router validates it and uses a deterministic fallback only when it is absent or ineligible. |
+| AI-selected defaults | The planner supplies an optional `aiChoice`; the router validates it and uses the stable locally configured production registry only when it is absent or ineligible. |
 | Prompt-level overrides | `promptOverride` is separate from `aiChoice`, has higher precedence, and fails explicitly instead of silently falling back. |
 | Deterministic tests | A credential-free mock adapter has stable identifiers, state transitions, artifacts, and failure behavior. |
 | No secret persistence | Secrets, authorization headers, and signed provider URLs are forbidden from the canvas document, logs, fixtures, and errors. |
@@ -51,6 +60,7 @@ interface OutputRequirements {
   aspectRatio?: "16:9" | "9:16" | "1:1";
   width?: number;
   height?: number;
+  count?: number;                // image candidates; local MVP accepts 1..4
   durationSeconds?: number;      // video only
   audio?: "required" | "forbidden" | "either";
   mediaType?: string;
@@ -89,6 +99,7 @@ interface ModelCapability {
   outputMediaTypes: string[];
   aspectRatios?: Array<"16:9" | "9:16" | "1:1">;
   sizes?: Array<{ width: number; height: number }>;
+  maxOutputs?: number;           // omitted means only one output is supported
   durationsSeconds?: number[];
   audio: "always" | "never" | "optional";
   registryPriority: number;      // lower wins deterministic fallback
@@ -100,7 +111,7 @@ A model is eligible only when all of these statements are true:
 1. Its `kind` equals the request kind.
 2. It accepts text and every referenced input kind.
 3. Its output media types include the required media type, when specified.
-4. Every specified aspect ratio, exact size, duration, and audio requirement is
+4. Every specified aspect ratio, exact size, candidate count, duration, and audio requirement is
    advertised by the capability.
 5. Its provider is locally configured: either it needs no credential, or its
    declared credential environment variable is present and non-empty.
@@ -128,8 +139,10 @@ The router is deterministic validation code, not an LLM call.
 6. Return `no_matching_provider` when no eligible candidate exists.
 
 The planner is expected to provide `aiChoice` during normal Codex creation, so
-AI selects the provider and model by default. The deterministic fallback makes
-CLI behavior and tests reproducible when the planner declines to choose. Cost
+AI selects the provider and model by default. When it is absent or ineligible,
+the CLI selects the first locally configured production capability using the
+stable registry order. The mock adapter is omitted from that fallback and is
+available only through an explicit mock override in tests or local demos. Cost
 must not participate in MVP ranking.
 
 The router returns this non-secret value for persistence in the canvas
@@ -174,7 +187,7 @@ constructing an authorization header.
 The following are mandatory:
 
 - Never write credential values to source, local project files, the canvas
-  document, Multica configuration or metadata, fixtures, snapshots, errors, or
+  document, task-tracker configuration or metadata, fixtures, snapshots, errors, or
   logs.
 - Redact authorization headers and query parameters before transport logging.
 - Prefer authorization headers. In particular, the Gemini adapter sends
@@ -201,8 +214,8 @@ interface ProviderArtifact {
   artifactId: string;            // adapter-private locator, not a canvas asset id
   kind: MediaKind;
   mediaType: string;
-  byteLength?: number;
-  checksumSha256?: string;
+  byteLength: number;
+  checksumSha256: string;
 }
 
 interface ProviderError {
@@ -220,21 +233,27 @@ interface ProviderAdapter {
   submit(
     request: GenerationRequest,
     modelId: string,
-    credential?: Secret,
+    context?: ProviderExecutionContext,
   ): Promise<ProviderSnapshot>;
-  poll(providerJobId: string, credential?: Secret): Promise<ProviderSnapshot>;
+  poll(providerJobId: string, context?: ProviderExecutionContext): Promise<ProviderSnapshot>;
   openArtifact(
     providerJobId: string,
     artifactId: string,
-    credential?: Secret,
+    context?: ProviderExecutionContext,
   ): Promise<AsyncIterable<Uint8Array>>;
+}
+
+interface ProviderExecutionContext {
+  credential?: Secret;
+  inputBytes?: ReadonlyMap<string, Uint8Array>;
 }
 ```
 
 Every provider is normalized to this lifecycle, even when its API returns an
 image synchronously: `submit` may immediately return `succeeded`. For
-asynchronous providers, `submit` returns `queued` or `running`; core schedules
-polling and owns retry timing. Status transitions are monotonic:
+asynchronous providers, `submit` returns `queued` or `running`; the local CLI
+owns the bounded polling loop and Core applies only monotonic snapshots. Status
+transitions are monotonic:
 
 ```text
 queued -> running -> succeeded
@@ -263,16 +282,36 @@ supports the required behavior.
 
 - Credential: `OPENAI_API_KEY`.
 - Model: `gpt-image-2`.
-- Capability: text-to-image generation; adapter calls the Image API and
-  materializes returned image bytes.
-- MVP manifest: text input; PNG, JPEG, or WebP output; canonical sizes
-  `1024x1024`, `2048x1152`, and `2160x3840`; aspect ratios `1:1`, `16:9`, and
-  `9:16`; audio `never`; registry priority `100`.
-- Contract mapping: an Image API response is normalized to an immediately
-  `succeeded` snapshot.
+- Capability: text-to-image generation and project-local image-reference
+  generation/editing. Text-only work uses the Image API generations endpoint;
+  image-reference work uses the multipart edits endpoint. Both materialize
+  returned Base64 image bytes.
+- Current manifest: text and image input; PNG, JPEG, or WebP output; common
+  Studio presets `1024x1024`, `1792x1008`, and `1008x1792`; aspect ratios
+  `1:1`, `16:9`, and `9:16`; audio `never`; registry priority `100`. In
+  addition to those presets, routing accepts any `gpt-image-2` resolution with
+  both edges divisible by `16`, max edge `3840`, aspect ratio at most `3:1`,
+  and total pixels from `655,360` through `8,294,400`. For example,
+  `2048x1152` is valid. The adapter advertises `maxOutputs: 4`; an image
+  request may set `count` to `1`, `2`, or `4`. The CLI sends the Image API
+  `n` parameter for counts above one and materializes every returned candidate
+  as a separate project-local asset.
+- Contract mapping: a successful Image API response becomes an immediate
+  `succeeded` snapshot. The bytes remain in adapter memory only until Core
+  writes the content-addressed project-local asset.
+- Project-local reference rule: the CLI passes image bytes only in a transient
+  multipart request. PNG, JPEG, and WebP references are accepted; the adapter
+  does not persist source bytes, remote file IDs, or provider URLs in the
+  canvas document.
+- Route validation rule: the same input-media-type rule participates in pure
+  capability matching, so an unsupported local reference (for example GIF)
+  is rejected before any generation job is persisted or provider request is
+  sent.
 
-Official evidence: OpenAI documents `gpt-image-2` as its current image model and
-the Image API generations endpoint for single-prompt generation in the
+Official evidence: OpenAI documents `gpt-image-2` as its current image model,
+the Image API `n` parameter for multiple generated images, the generations
+endpoint for single-prompt generation, and the edits
+endpoint with one or more image references in the
 [image generation guide](https://developers.openai.com/api/docs/guides/image-generation)
 and [model page](https://developers.openai.com/api/docs/models/gpt-image-2).
 
@@ -282,16 +321,19 @@ and [model page](https://developers.openai.com/api/docs/models/gpt-image-2).
 - Model: `gemini-omni-flash-preview`.
 - Capability: text-to-video and image-to-video, MP4 output, native audio, and
   `16:9` or `9:16` aspect ratio.
-- MVP manifest: text and image inputs; MP4 output; aspect ratios `16:9` and
-  `9:16`; no advertised exact size or duration; audio `always`; registry
-  priority `100`. An explicit size, duration, or no-audio requirement therefore
-  does not match until official support is recorded in the registry.
-- Contract mapping: inline output may immediately succeed; URI delivery is
-  normalized to `running` while its file state is processing, `succeeded` when
-  active, and `failed` when the file state fails.
+- Current manifest: text and image inputs; MP4 output; aspect ratios `16:9`
+  and `9:16`; no advertised exact size or duration; audio `always`; registry
+  priority `100`. Explicit size, duration, video-input, or no-audio
+  requirements do not match this adapter.
+- Contract mapping: the adapter posts an interaction with URI delivery. An
+  inline video response completes immediately. A URI-delivered interaction is
+  stored as `running`; later CLI polling requests the interaction by ID and
+  materializes the returned Base64 bytes when available. The URI itself remains
+  adapter-private.
 
 Google currently recommends Gemini Omni Flash as the default Gemini API video
-model and documents both text/image inputs and MP4 output in the
+model and documents the interactions endpoint, text/image inputs, MP4 output,
+and URI delivery in the
 [video overview](https://ai.google.dev/gemini-api/docs/video) and
 [Omni Flash guide](https://ai.google.dev/gemini-api/docs/omni). The model is in
 preview, so its identifier and capabilities belong in registry data and must be
@@ -333,9 +375,10 @@ between cases.
 
 ## Conformance cases
 
-The future provider package must turn each row into a focused contract test.
-No executable test harness exists in the repository at the time of this
-specification.
+The repository contains focused contract tests in
+packages/core/test/providers.test.ts and CLI behavior tests in
+packages/cli/test/cli.test.ts. They inject an in-memory fetch transport; no
+test contacts a real provider or uses a real credential.
 
 | Case | Expected result |
 | --- | --- |
@@ -344,8 +387,9 @@ specification.
 | Prompt overrides provider and model with an eligible pair | Exact pair, source `prompt_override`. |
 | Prompt override names an incapable or unknown provider/model | `invalid_override`; no fallback and no adapter call. |
 | Prompt override names a capable provider whose credential is absent | `missing_credential` with the safe environment-variable name; no fallback. |
-| AI recommendation is incapable but another eligible model exists | Deterministic registry fallback. |
+| AI recommendation is incapable but another eligible model exists | Stable production-registry fallback; mock is excluded. |
 | Required duration, aspect ratio, media type, or audio is not advertised | Candidate is excluded. |
+| Image request asks for 2 or 4 candidates | Only an adapter advertising enough `maxOutputs` is eligible; OpenAI materializes every returned image locally. |
 | Required credential variable is absent or empty | Provider is excluded; errors never include a secret value. |
 | Same mock request is run twice | Same provider job id, state sequence, artifact id, bytes, and checksum. |
 | Prompt begins `[mock:fail]` | Stable non-retryable `provider_rejected` failure. |
@@ -353,13 +397,12 @@ specification.
 
 ## Implementation boundary
 
-When the shared package foundation lands, implement in three focused units:
+The current implementation uses three focused units:
 
-1. Pure capability matcher and router, with no SDK imports and no credential
-   access.
-2. Local environment credential resolver with redaction tests.
-3. Adapter registry containing the two initial adapters and deterministic mock,
-   each behind the same conformance suite.
+1. Pure capability matcher and router in Core, with no environment access.
+2. CLI-only local environment resolver and local asset-byte loader.
+3. Adapter registry containing OpenAI Image, Gemini Omni Flash, and the
+   explicit-only deterministic mock.
 
 Provider SDK response objects must not cross this boundary. The canvas schema,
 CLI, and preview consume only normalized route, job, error, and asset records.

@@ -5,6 +5,33 @@ export type Timestamp = string;
 export type DraftId = string;
 export type NodeId = string;
 export type AssetId = string;
+export type CompositionSpec = {
+  [k: string]: unknown;
+} & {
+  [k: string]: unknown;
+} & {
+  kind: "composition";
+  mediaType: string;
+  role?:
+    | "composition"
+    | "text"
+    | "smart-edit"
+    | "director"
+    | "frame-analysis"
+    | "audio"
+    | "script"
+    | "asset-library"
+    | "asset-reference"
+    | "character"
+    | "scene-style"
+    | "group";
+  prompt?: string;
+  referenceAssetIds?: AssetId[];
+  /**
+   * @minItems 2
+   */
+  memberNodeIds?: [NodeId, NodeId, ...NodeId[]];
+};
 export type Execution = {
   [k: string]: unknown;
 } & {
@@ -43,7 +70,7 @@ export type Job = {
   updatedAt: Timestamp;
 };
 
-export interface CreatorCanvasDraftBasedProjectDocumentV1 {
+export interface OpenCanvasDraftBasedProjectDocumentV1 {
   schemaVersion: 1;
   revision: number;
   project: Project;
@@ -95,6 +122,7 @@ export interface OutputRequirements {
   aspectRatio?: "16:9" | "9:16" | "1:1";
   width?: number;
   height?: number;
+  count?: number;
   durationSeconds?: number;
   audio?: "required" | "forbidden" | "either";
   mediaType?: string;
@@ -106,10 +134,6 @@ export interface RoutingHints {
 export interface RouteHint {
   providerId?: string;
   modelId?: string;
-}
-export interface CompositionSpec {
-  kind: "composition";
-  mediaType: "video/mp4";
 }
 export interface Edge {
   id: EdgeId;
@@ -142,6 +166,11 @@ export interface Asset {
       }
     | {
         kind: "import";
+      }
+    | {
+        kind: "deleted-job";
+        draftId: DraftId;
+        jobId: JobId;
       };
   createdAt: Timestamp;
 }

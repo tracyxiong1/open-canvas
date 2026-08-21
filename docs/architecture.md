@@ -1,16 +1,18 @@
-# Creator Canvas architecture and draft-based project document v1
+# Open Canvas architecture and draft-based project document v1
 
-Status: MVP architecture decision for JIM-11.
+Status: implemented MVP architecture baseline.
 
 The project document is the durable source of truth shared by the CLI, Codex
-creation skill, and preview. A project owns one or more drafts; each draft is an
+creation skill, and studio. A project owns one or more drafts; each draft is an
 independent editable canvas with its own graph, jobs, and revision, while assets
-are shared by the project. The CLI is the only writer. The skill plans work and
-invokes the CLI; it does not edit JSON itself. The preview selects and reads one
-draft from the same document and project-local assets; it does not run providers
-or receive credentials.
+are shared by the project. The CLI remains the filesystem writer. The skill
+plans work and invokes the CLI; it does not edit JSON itself. `open` starts a
+single-project loopback bridge so Studio can load the actual project, resolve
+only its declared local assets, and explicitly save a revision-checked snapshot
+back through the same atomic persistence boundary. The browser still uses the
+shared command core for in-memory edits; it does not run providers or receive
+credentials.
 
-This decision deliberately stops before scaffolding TypeScript packages or UI.
 The machine-readable v1 contract is
 `docs/schema/canvas-document-v1.schema.json`, with complete examples in
 `docs/examples/`.
@@ -19,40 +21,43 @@ The machine-readable v1 contract is
 
 | MVP requirement | Architecture decision |
 | --- | --- |
-| One model for CLI, skill, and preview | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
+| One model for CLI, skill, and studio | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
 | Draft-based creation | A project has one or more switchable drafts; each draft owns an independent canvas and may record the draft it was copied from. |
 | Three-shot graph | Within a draft, `shot` nodes are ordered with `sequence` edges and feed a `composition` through `dependency` edges. |
+| Script-to-shot graph | The shared `expandScriptIntoShots` mutation creates editable local video shots, script dependencies, and adjacent sequence edges in one revision-checked draft mutation. |
 | Targeted follow-up edits | Only the edited node and transitive `dependency` descendants in the selected draft become `dirty`; other drafts are unchanged. |
 | Observable generation | Nodes expose current execution state while jobs retain attempt history and normalized provider state. |
 | Restart-safe providers | The resolved route and provider job ID are persisted on the job before subsequent polling. |
 | Durable assets | Provider artifacts are streamed into a project-local, content-addressed asset store before their metadata is committed. |
-| BYOK isolation | Credentials remain process-local environment values and are forbidden from the document, assets, logs, and preview. |
-| Small TypeScript implementation | One shared core package will own schema validation, mutations, persistence, routing, and jobs; the CLI and preview are thin consumers. |
+| BYOK isolation | Credentials remain process-local environment values and are forbidden from the document, assets, logs, and studio. |
+| Small TypeScript implementation | One shared core package owns schema validation, mutations, persistence, routing, and jobs; the CLI and studio are thin consumers. |
 
 ## Decision and rejected alternatives
 
-The repository will use a small npm workspace when implementation begins:
+The repository uses a small npm workspace:
 
 ```text
 package.json
 packages/
   core/                 # schema/types, graph mutations, invalidation, storage, jobs
-  cli/                  # first-party command surface; the only canvas writer
-  preview/              # read-only standalone web app
+  cli/                  # first-party command surface and filesystem writer
+  preview/              # React Flow editor using the browser-safe core entry
 skills/
-  create-video/         # Codex instructions that invoke the CLI
+  open-canvas/          # Codex instructions that invoke the CLI
 ```
 
-`@creator-canvas/core` is the only shared TypeScript dependency. Splitting
+`@open-canvas/core` is the only shared TypeScript dependency. Splitting
 schema, graph, persistence, providers, and jobs into separate packages would
 add release and dependency overhead without creating an MVP deployment
-boundary. A single application package would instead tempt the CLI and preview
+boundary. A single application package would instead tempt the CLI and studio
 to develop incompatible document models. A database or local server is also
-unnecessary: the MVP has one local writer and a read-only preview.
+unnecessary: the MVP has one filesystem writer and an explicit local-file web
+editing loop. A local project service may replace import/export later without
+changing command semantics.
 
-The checked-in JSON Schema is canonical until `packages/core` exists. The core
-package must expose a runtime validator and TypeScript types derived from this
-contract; it must not maintain a second handwritten shape. Schema version 1 is
+The checked-in JSON Schema is canonical. The core exposes a runtime validator
+and generates TypeScript types from this contract; it does not maintain a
+second handwritten shape. Schema version 1 is
 closed to unknown fields (`additionalProperties: false`). A future incompatible
 shape requires a new integer `schemaVersion`, schema file, explicit migration,
 and fixture. Readers must reject unsupported versions rather than guess.
@@ -63,9 +68,9 @@ and fixture. Readers must reject unsupported versions rather than guess.
 
 - `schemaVersion`: the document format version, currently `1`.
 - `revision`: the project-wide optimistic-concurrency revision. Every successful
-  CLI transaction increments it exactly once.
+  command-core mutation increments it exactly once.
 - `project`: stable project identity and display metadata.
-- `activeDraftId`: the draft selected by default for CLI and preview commands.
+- `activeDraftId`: the draft selected by default for CLI and studio commands.
 - `drafts`: one or more independent editable canvases. A draft owns its
   `revision`, optional `sourceDraftId`, `nodes`, `edges`, and `jobs`.
 - `assets`: project-shared metadata for immutable local blobs.
@@ -103,11 +108,13 @@ integrity checks. Referential integrity, ID uniqueness, and asset-ID/checksum
 agreement are semantic invariants checked by the core in addition to JSON
 Schema validation.
 
-Asset `origin` is either `{ kind: "job", draftId, jobId }` for
-generated/composed bytes or `{ kind: "import" }` for user-supplied bytes copied
-into the asset store. The draft-qualified job address remains unambiguous after
-a draft is copied. Origin is provenance only and does not affect content
-identity.
+Asset `origin` is `{ kind: "job", draftId, jobId }` for generated/composed
+bytes or `{ kind: "import" }` for user-supplied bytes copied into the asset
+store. When a node is explicitly deleted but a sibling draft still references
+its immutable result, the origin becomes `{ kind: "deleted-job", draftId,
+jobId }`; that preserves provenance without retaining a graph job whose node no
+longer exists. The draft-qualified job address remains unambiguous after a
+draft is copied. Origin is provenance only and does not affect content identity.
 
 ## Graph contract
 
@@ -116,13 +123,38 @@ Each draft in version 1 has two node kinds:
 - `shot`: a generation request with a prompt, media kind, optional immutable
   asset inputs, normalized output requirements, and optional routing hints.
 - `composition`: an exported video assembled from dependency inputs in shot
-  sequence order.
+  sequence order. Its optional context roles (`text`, `smart-edit`, `director`,
+  `frame-analysis`, `audio`, `script`, `asset-reference`, `character`, and
+  `scene-style`) are durable project-scoped canvas prompt nodes: they store
+  creative intent, accept incoming reference links, and are editable in the
+  studio, but never submit a generation job. `asset-library` remains accepted
+  only to read older v1 documents; new commands must not create it.
+
+`composition.role = "group"` is the one layout-only composition role. A group
+contains at least two current-draft `memberNodeIds`, has no Prompt, asset
+references, edges, jobs, or output assets, and is never eligible for
+generation. Its visible bounds are derived by Studio from its members rather
+than treated as a second copy of their geometry. `createGroup` and `moveGroup`
+are revision-checked Core mutations: the latter moves every member in one
+atomic layout write. Deleting a member updates its frame membership or removes
+the frame when fewer than two members remain. Groups cannot nest or share a
+member in v1, which keeps every node's project-local layout ownership explicit.
+
+A `script` context node may be expanded through the shared Core mutation. The
+operation reads its line or sentence-oriented prompt, creates at most eight
+ordinary video-shot nodes, adds a `dependency` edge from the script to every
+new shot, and adds `sequence` edges between adjacent shots. Studio and the CLI
+use the same operation; it does not create a global template, role, or material
+record.
 
 Every node has presentation fields (`title`, `position`) and a `specRevision`.
 Changing only presentation fields increments the selected draft revision and
 project revision but does not increment `specRevision` or invalidate
-generation. Changing `spec` increments `specRevision` and triggers invalidation
-inside that draft.
+generation. A multi-node drag or accepted auto-arrange uses one `moveNodes`
+layout mutation, and an explicit group-frame drag uses `moveGroup`, so each
+complete coordinate set advances each revision once rather than persisting
+card-by-card. Changing `spec` increments `specRevision` and triggers
+invalidation inside that draft.
 
 Edges are directed `sourceNodeId -> targetNodeId` and have distinct semantics:
 
@@ -134,11 +166,13 @@ Edges are directed `sourceNodeId -> targetNodeId` and have distinct semantics:
 
 Edges and jobs cannot reference nodes from another draft. Duplicate `(kind,
 sourceNodeId, targetNodeId)` edges and self-edges are invalid.
-Dependency edges must be acyclic; v1 dependency edges terminate at a
-composition and sequence edges connect shots. For an exportable project, the
-shots feeding a composition must form one unambiguous sequence chain;
-disconnected or branching order is a validation error, not an invitation to
-use array order.
+Dependency edges must be acyclic. Layout groups cannot participate in either
+edge kind. A dependency may condition a shot with a
+context node or an already-produced asset node, and may feed an output
+composition. Sequence edges connect shots only. For an exportable project, the
+output-producing nodes feeding a composition must form one unambiguous sequence
+chain; disconnected or branching order is a validation error, not an invitation
+to use array order.
 
 ## Execution and job states
 
@@ -177,6 +211,18 @@ outputs and no error; failure has one sanitized error and no outputs.
 Historical jobs and assets are retained when superseded so the document can
 explain provenance. They are not current merely because they succeeded.
 Garbage collection and cancellation are outside MVP scope.
+
+Explicit node deletion is different from invalidation: it removes that node,
+its incident edges and jobs. Unreferenced assets produced only by those jobs are
+removed from the document index; immutable assets that remain referenced by a
+sibling draft are retained with `deleted-job` provenance.
+
+A context-role composition stays `dirty`: it carries editable planning context
+rather than an output asset, and `startGeneration` rejects it explicitly. This
+keeps planning, editing, audio, script, and asset-reference surfaces on the
+same document and graph surface without fabricating a provider job or an output
+media artifact. Validation also forbids a context role from owning a historical
+generation job or a non-`dirty` execution state.
 
 ## Fingerprints and targeted invalidation
 
@@ -240,7 +286,8 @@ A draft mutation is one locked project transaction:
    `outputAssetIds`. Do not delete jobs or assets.
 5. Validate the complete document, increment the selected draft revision and
    project revision once, update both timestamps, and atomically replace
-   `project.json`. No other draft changes.
+   `project.json`. Composite actions such as script expansion may create
+   several graph records in this same mutation. No other draft changes.
 
 If an invalidated provider attempt later completes, its job may be updated for
 history and its blob may be materialized, but the result attaches only to the
@@ -264,8 +311,8 @@ The project directory is the persistence boundary:
 <project>/
   project.json                        # project, drafts, graphs, jobs, asset metadata
   assets/sha256/<digest>              # immutable project-shared bytes
-  .creator-canvas/lock                # transient single-writer lock
-  .creator-canvas/tmp/                # transient same-filesystem writes/downloads
+  .open-canvas/lock                # transient single-writer lock
+  .open-canvas/tmp/                # transient same-filesystem writes/downloads
 ```
 
 `project.json` stores only project-relative asset paths using `/` separators.
@@ -275,17 +322,21 @@ bytes are copied or streamed into `assets/` before the document references
 them. The CLI verifies byte length and checksum on read/export.
 
 Writes use a project-local lock plus project and selected-draft revision checks.
-The CLI writes and fsyncs a temporary file in `.creator-canvas/tmp/`, validates
+The CLI writes and fsyncs a temporary file in `.open-canvas/tmp/`, validates
 it, then renames it over `project.json` on the same filesystem. A lock file and
-temporary files are operational state, never document truth. The preview
-watches `project.json`, selects `activeDraftId` unless given an explicit draft,
-reloads only after a successful parse/validation, and keeps its last valid
-snapshot during a partial or rejected read.
+temporary files are operational state, never document truth. The browser
+studio may still import/export a selected JSON snapshot, or it may be opened by
+the CLI bridge: that loopback service exposes only the selected validated
+`project.json` and asset IDs already declared by it. A Studio save includes the
+last persisted project revision; the bridge rejects conflicts, new asset bytes,
+project-identity changes, and invalid documents before calling the same atomic
+save. It never accepts arbitrary filesystem paths, directory listing requests,
+or provider credentials.
 
 Credentials are resolved from the selected provider's local environment
 variable only inside the CLI immediately before adapter I/O. Credential values,
 headers, provider response dumps, and secret-bearing URLs must never enter any
-project file, fixture, error, log, or preview payload.
+project file, fixture, error, log, or studio payload.
 
 ## Normative examples
 

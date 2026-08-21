@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { v7 as uuidv7 } from "uuid";
 
 import type {
-  CreatorCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
+  OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Job,
   Node,
@@ -11,6 +11,9 @@ import type {
 import type { GenerationRequest, ProviderSnapshot } from "./providers.js";
 import { RevisionConflictError } from "./mutations.js";
 import {
+  isContextComposition,
+  isLayoutGroup,
+  orderedDependencyNodes,
   orderedCompositionDependencies,
   parseCanvasDocument,
 } from "./validation.js";
@@ -32,6 +35,10 @@ function findNode(draft: Draft, nodeId: string): Node {
   return node;
 }
 
+function isContextNode(node: Node): boolean {
+  return isContextComposition(node);
+}
+
 function finish(document: CanvasDocument, draft: Draft, now: string): CanvasDocument {
   draft.revision += 1;
   draft.updatedAt = now;
@@ -40,7 +47,12 @@ function finish(document: CanvasDocument, draft: Draft, now: string): CanvasDocu
   return parseCanvasDocument(document);
 }
 
-function routeFor(node: Node): ResolvedRoute {
+/**
+ * The shared core stays credential-free. This mock-only fallback preserves
+ * deterministic direct-core tests; the CLI supplies a registry-backed route
+ * before a production job is persisted.
+ */
+function fallbackMockRouteFor(node: Node): ResolvedRoute {
   const defaultModel = node.spec.kind === "shot" && node.spec.mediaKind === "image"
     ? "mock-image-v1"
     : "mock-video-v1";
@@ -85,6 +97,7 @@ function assertMockRequirements(node: Node): void {
     (requirements.aspectRatio !== undefined && requirements.aspectRatio !== expectedAspectRatio) ||
     (requirements.width !== undefined && requirements.width !== expectedWidth) ||
     (requirements.height !== undefined && requirements.height !== expectedHeight) ||
+    (requirements.count !== undefined && requirements.count !== 1) ||
     requirements.audio === "required" ||
     (requirements.durationSeconds !== undefined && (image || requirements.durationSeconds !== 5))
   ) {
@@ -92,16 +105,65 @@ function assertMockRequirements(node: Node): void {
   }
 }
 
+function uniqueAssetIds(assetIds: string[]): string[] {
+  return [...new Set(assetIds)];
+}
+
+function shotContextPrompt(basePrompt: string, contextNodes: Node[]): string {
+  if (contextNodes.length === 0) return basePrompt;
+  const blocks = contextNodes.map((context) => {
+    if (context.spec.kind !== "composition") return context.title;
+    return `[${context.title}]\n${context.spec.prompt ?? ""}`;
+  });
+  return `${basePrompt}\n\n创作上下文：\n${blocks.join("\n\n")}`;
+}
+
+function assertDependenciesReady(draft: Draft, node: Node): void {
+  const dependencies = orderedDependencyNodes(draft, node.id);
+  if (node.spec.kind === "composition" && !isContextNode(node)) {
+    if (
+      dependencies.length === 0 ||
+      dependencies.some(
+        (dependency) => isContextNode(dependency) || dependency.execution.status !== "succeeded" || dependency.execution.outputAssetIds.length === 0,
+      )
+    ) {
+      throw new Error(`Composition dependencies are not ready: ${node.id}`);
+    }
+    return;
+  }
+  if (node.spec.kind === "shot") {
+    const outputDependencies = dependencies.filter((dependency) => !isContextNode(dependency));
+    if (outputDependencies.some((dependency) => dependency.execution.status !== "succeeded" || dependency.execution.outputAssetIds.length === 0)) {
+      throw new Error(`Shot dependencies are not ready: ${node.id}`);
+    }
+  }
+}
+
 function requestFor(document: CanvasDocument, draft: Draft, node: Node, jobId: string): GenerationRequest {
   const assets = new Map(document.assets.map((asset) => [asset.id, asset]));
-  const inputIds = node.spec.kind === "shot"
-    ? node.spec.inputAssetIds
+  const directDependencies = orderedDependencyNodes(draft, node.id);
+  const contextDependencies = node.spec.kind === "shot"
+    ? directDependencies.filter((dependency) => isContextNode(dependency))
+    : [];
+  const dependencyOutputIds = node.spec.kind === "shot"
+    ? directDependencies
+        .filter((dependency) => !isContextNode(dependency))
+        .flatMap((dependency) => dependency.execution.outputAssetIds)
     : orderedCompositionDependencies(draft, node.id)
         .flatMap((dependency) => dependency.execution.outputAssetIds);
+  const inputIds = uniqueAssetIds(node.spec.kind === "shot"
+    ? [
+        ...node.spec.inputAssetIds,
+        ...dependencyOutputIds,
+        ...contextDependencies.flatMap((dependency) => dependency.spec.kind === "composition" ? dependency.spec.referenceAssetIds ?? [] : []),
+      ]
+    : dependencyOutputIds);
   return {
     jobId,
     kind: node.spec.kind === "shot" ? node.spec.mediaKind : "video",
-    prompt: node.spec.kind === "shot" ? node.spec.prompt : `Compose ${node.title}`,
+    prompt: node.spec.kind === "shot"
+      ? shotContextPrompt(node.spec.prompt, contextDependencies)
+      : node.spec.prompt ?? `Compose ${node.title}`,
     inputs: inputIds.map((assetId) => {
       const asset = assets.get(assetId);
       if (!asset) throw new Error(`Unknown input asset: ${assetId}`);
@@ -120,6 +182,7 @@ export interface StartGenerationOptions {
   expectedDraftRevision: number;
   jobId?: string;
   now?: string;
+  resolveRoute?: (request: GenerationRequest, node: Node) => ResolvedRoute;
 }
 
 export function startGeneration(
@@ -138,23 +201,14 @@ export function startGeneration(
   if (node.execution.status !== "dirty" && node.execution.status !== "failed") {
     throw new Error(`Generation starts only from dirty or failed nodes: ${node.id}`);
   }
-  if (node.spec.kind === "composition") {
-    const dependencies = draft.edges
-      .filter((edge) => edge.kind === "dependency" && edge.targetNodeId === node.id)
-      .map((edge) => findNode(draft, edge.sourceNodeId));
-    if (
-      dependencies.length === 0 ||
-      dependencies.some(
-        (dependency) => dependency.execution.status !== "succeeded" || dependency.execution.outputAssetIds.length === 0,
-      )
-    ) {
-      throw new Error(`Composition dependencies are not ready: ${node.id}`);
-    }
-  }
-  assertMockRequirements(node);
+  if (isContextNode(node)) throw new Error(`Context nodes are prompts, not generation jobs: ${node.id}`);
+  if (isLayoutGroup(node)) throw new Error(`Layout groups are not generation jobs: ${node.id}`);
+  assertDependenciesReady(draft, node);
   const now = timestamp(options.now);
   const jobId = options.jobId ?? `job_${uuidv7()}`;
-  const route = routeFor(node);
+  const request = requestFor(document, draft, node, jobId);
+  const route = options.resolveRoute?.(request, node) ?? fallbackMockRouteFor(node);
+  if (route.providerId === "mock") assertMockRequirements(node);
   const job: Job = {
     id: jobId,
     nodeId: node.id,
@@ -173,7 +227,6 @@ export function startGeneration(
     activeJobId: job.id,
     outputAssetIds: [],
   };
-  const request = requestFor(document, draft, node, job.id);
   return { document: finish(document, draft, now), request, route };
 }
 
@@ -192,8 +245,8 @@ export function resumeGeneration(
     throw new Error(`Node has no resumable generation: ${node.id}`);
   }
   const job = draft.jobs.find((candidate) => candidate.id === node.execution.activeJobId);
-  if (!job || job.inputFingerprint !== node.execution.inputFingerprint || job.route.providerId !== "mock") {
-    throw new Error(`Node has no valid resumable mock job: ${node.id}`);
+  if (!job || job.inputFingerprint !== node.execution.inputFingerprint) {
+    throw new Error(`Node has no valid resumable generation: ${node.id}`);
   }
   return { document: input, request: requestFor(input, draft, node, job.id), route: job.route };
 }
@@ -227,7 +280,6 @@ export function failGeneration(input: CanvasDocument, options: FailGenerationOpt
   job.outputAssetIds = [];
   job.updatedAt = now;
   const node = findNode(draft, job.nodeId);
-  assertMockRequirements(node);
   if (node.execution.activeJobId === job.id && node.execution.inputFingerprint === job.inputFingerprint) {
     node.execution.status = "failed";
     node.execution.outputAssetIds = [];
@@ -277,7 +329,13 @@ export interface CompleteGenerationOptions {
   draftId: string;
   jobId: string;
   providerJobId: string;
-  artifact: { kind: "image" | "video"; mediaType: string; bytes: Uint8Array };
+  /** Provider outputs for this generation attempt, in the provider's order. */
+  artifacts?: Array<{ kind: "image" | "video"; mediaType: string; bytes: Uint8Array }>;
+  /**
+   * Compatibility input for callers that predate multi-candidate image
+   * generation. New callers should pass `artifacts` even for one output.
+   */
+  artifact?: { kind: "image" | "video"; mediaType: string; bytes: Uint8Array };
   now?: string;
 }
 
@@ -289,40 +347,52 @@ export function completeGeneration(input: CanvasDocument, options: CompleteGener
   if (job.status !== "queued" && job.status !== "running") {
     throw new Error(`Invalid provider transition: ${job.status} -> succeeded`);
   }
-  const bytes = Buffer.from(options.artifact.bytes);
-  if (bytes.length === 0) throw new Error("Provider artifact is empty");
+  const artifacts = options.artifacts ?? (options.artifact === undefined ? [] : [options.artifact]);
+  if (artifacts.length === 0) throw new Error("Provider did not return an artifact");
   const node = findNode(draft, job.nodeId);
   const expectedKind = node.spec.kind === "shot" ? node.spec.mediaKind : "video";
   const expectedMediaType = node.spec.kind === "shot"
     ? node.spec.requirements?.mediaType ?? (expectedKind === "image" ? "image/png" : "video/mp4")
     : node.spec.mediaType;
-  if (options.artifact.kind !== expectedKind || options.artifact.mediaType !== expectedMediaType) {
-    throw new Error("Provider artifact does not satisfy output requirements");
+  const expectedOutputCount = node.spec.kind === "shot" ? node.spec.requirements?.count ?? 1 : 1;
+  if (artifacts.length !== expectedOutputCount) {
+    throw new Error("Provider output count does not satisfy output requirements");
   }
-  const digest = createHash("sha256").update(bytes).digest("hex");
-  const assetId = `asset_sha256_${digest}`;
   const now = timestamp(options.now);
-  if (!document.assets.some((asset) => asset.id === assetId)) {
-    document.assets.push({
-      id: assetId,
-      kind: options.artifact.kind,
-      mediaType: options.artifact.mediaType,
-      byteLength: bytes.length,
-      checksumSha256: `sha256:${digest}`,
-      path: `assets/sha256/${digest}`,
-      origin: { kind: "job", draftId: draft.id, jobId: job.id },
-      createdAt: now,
-    });
+  const assetIds = artifacts.map((artifact) => {
+    const bytes = Buffer.from(artifact.bytes);
+    if (bytes.length === 0) throw new Error("Provider artifact is empty");
+    if (artifact.kind !== expectedKind || artifact.mediaType !== expectedMediaType) {
+      throw new Error("Provider artifact does not satisfy output requirements");
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const assetId = `asset_sha256_${digest}`;
+    if (!document.assets.some((asset) => asset.id === assetId)) {
+      document.assets.push({
+        id: assetId,
+        kind: artifact.kind,
+        mediaType: artifact.mediaType,
+        byteLength: bytes.length,
+        checksumSha256: `sha256:${digest}`,
+        path: `assets/sha256/${digest}`,
+        origin: { kind: "job", draftId: draft.id, jobId: job.id },
+        createdAt: now,
+      });
+    }
+    return assetId;
+  });
+  if (new Set(assetIds).size !== assetIds.length) {
+    throw new Error("Provider returned duplicate candidate artifacts");
   }
   job.status = "succeeded";
   job.providerJobId = options.providerJobId;
   job.progress = 1;
-  job.outputAssetIds = [assetId];
+  job.outputAssetIds = assetIds;
   delete job.error;
   job.updatedAt = now;
   if (node.execution.activeJobId === job.id && node.execution.inputFingerprint === job.inputFingerprint) {
     node.execution.status = "succeeded";
-    node.execution.outputAssetIds = [assetId];
+    node.execution.outputAssetIds = assetIds;
     invalidateDependencyClosure(document, draft, [node.id], false);
   }
   return finish(document, draft, now);

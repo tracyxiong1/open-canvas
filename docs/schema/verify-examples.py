@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the normative Creator Canvas v1 examples and semantic invariants."""
+"""Validate the normative Open Canvas v1 examples and semantic invariants."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def validate_draft(document: dict, draft: dict) -> None:
         source = nodes[source_id]
         target = nodes[target_id]
         if edge["kind"] == "dependency":
-            assert target["spec"]["kind"] == "composition"
+            assert target["spec"]["kind"] in ("composition", "shot")
             dependency[source_id].append(target_id)
         else:
             assert source["spec"]["kind"] == target["spec"]["kind"] == "shot"

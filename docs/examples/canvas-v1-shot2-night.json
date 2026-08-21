@@ -55,7 +55,7 @@
           "id": "node_019c8f55-1002-7000-8000-000000000002",
           "title": "Shot 2 — Crossing",
           "position": {
-            "x": 360,
+            "x": 430,
             "y": 0
           },
           "specRevision": 1,
@@ -90,7 +90,7 @@
           "id": "node_019c8f55-1003-7000-8000-000000000003",
           "title": "Shot 3 — Signal",
           "position": {
-            "x": 720,
+            "x": 860,
             "y": 0
           },
           "specRevision": 1,
@@ -125,8 +125,8 @@
           "id": "node_019c8f55-1004-7000-8000-000000000004",
           "title": "Final composition",
           "position": {
-            "x": 360,
-            "y": 320
+            "x": 430,
+            "y": 520
           },
           "specRevision": 1,
           "spec": {
@@ -301,7 +301,7 @@
           "id": "node_019c8f55-1002-7000-8000-000000000002",
           "title": "Shot 2 — Crossing",
           "position": {
-            "x": 360,
+            "x": 430,
             "y": 0
           },
           "specRevision": 2,
@@ -333,7 +333,7 @@
           "id": "node_019c8f55-1003-7000-8000-000000000003",
           "title": "Shot 3 — Signal",
           "position": {
-            "x": 720,
+            "x": 860,
             "y": 0
           },
           "specRevision": 1,
@@ -368,8 +368,8 @@
           "id": "node_019c8f55-1004-7000-8000-000000000004",
           "title": "Final composition",
           "position": {
-            "x": 360,
-            "y": 320
+            "x": 430,
+            "y": 520
           },
           "specRevision": 1,
           "spec": {

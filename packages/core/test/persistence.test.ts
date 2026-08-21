@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { createProject, loadProject, saveProjectAtomic } from "../src/index.js";
 
 test("atomic persistence leaves the old document after an interrupted pre-rename save", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "creator-canvas-core-"));
+  const directory = await mkdtemp(join(tmpdir(), "open-canvas-core-"));
   const initial = createProject({
     title: "Original",
     projectId: "project_019c8f55-9100-7000-8000-000000000910",
@@ -32,7 +32,7 @@ test("atomic persistence leaves the old document after an interrupted pre-rename
 });
 
 test("save rejects a stale on-disk revision without changing project.json", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "creator-canvas-stale-"));
+  const directory = await mkdtemp(join(tmpdir(), "open-canvas-stale-"));
   const initial = createProject({ title: "Current" });
   await saveProjectAtomic(directory, initial);
   const candidate = structuredClone(initial);
