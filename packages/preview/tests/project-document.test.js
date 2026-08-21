@@ -34,6 +34,31 @@ describe("project document preview adapter", () => {
     expect(model.activeDraft.nodes.every((node) => node.outputAssets.length === 1)).toBe(true);
   });
 
+  it("projects superseded successful jobs as node-local history without repeating the current output", () => {
+    const document = structuredClone(exampleDocument);
+    const draft = document.drafts.find((item) => item.id === document.activeDraftId);
+    const currentNode = draft.nodes[0];
+    const currentJob = draft.jobs.find((job) => job.id === currentNode.execution.activeJobId);
+    draft.jobs.push({
+      ...structuredClone(currentJob),
+      id: "job_preview_history",
+      attempt: currentJob.attempt + 1,
+      createdAt: "2026-08-11T08:01:00Z",
+      updatedAt: "2026-08-11T08:01:02Z",
+    });
+
+    const model = createPreviewModel(document, { resolveAssetUrl: resolveDemoAssetUrl });
+    const node = model.activeDraft.nodes[0];
+
+    expect(node.outputAssets).toHaveLength(1);
+    expect(node.generationHistory).toHaveLength(1);
+    expect(node.generationHistory[0]).toMatchObject({
+      jobId: "job_preview_history",
+      attempt: 2,
+      outputAssets: [{ id: currentNode.execution.outputAssetIds[0], previewUrl: "/assets/shot-arrival.webp" }],
+    });
+  });
+
   it("keeps every canonical generation state in the preview vocabulary", () => {
     expect(Object.keys(STATUS_META)).toEqual([
       "dirty",

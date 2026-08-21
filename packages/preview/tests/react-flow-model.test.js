@@ -11,10 +11,18 @@ import {
   TEXT_NODE_WIDTH,
 } from "../src/project-document.js";
 import {
+  buildAnchoredGraphViewport,
   buildAutoLayoutPositions,
+  connectionRejectionMessage,
   connectionToGraphMutation,
   findOpenNodePosition,
+  flowNodesToCanvasPositions,
+  flowNodesToSelectionIds,
+  getLayoutGroupBounds,
   HANDLE_IDS,
+  isLayoutGroupNode,
+  resolveCompositionShotOrder,
+  shouldSyncFlowSelection,
   toFlowEdges,
   toFlowNodes,
 } from "../src/react-flow-model.js";
@@ -24,6 +32,21 @@ function activeDraft() {
 }
 
 describe("React Flow projection", () => {
+  it("anchors a wide graph at the compact reference origin without changing document coordinates", () => {
+    const viewport = buildAnchoredGraphViewport({
+      nodes: [
+        { id: "source", position: { x: 145, y: 0 } },
+        { id: "later", position: { x: 476, y: 122 } },
+      ],
+    }, {
+      screenAnchor: { x: 48, y: 290 },
+      zoom: 0.302744,
+      presentationScale: 2,
+    });
+
+    expect(viewport).toEqual({ x: -39.79576, y: 290, zoom: 0.302744 });
+  });
+
   it("projects canonical nodes without changing their ids or positions", () => {
     const draft = activeDraft();
     const selectedId = draft.nodes[1].id;
@@ -40,21 +63,143 @@ describe("React Flow projection", () => {
     expect(nodes[1].data.node.id).toBe(selectedId);
   });
 
-  it("maps sequence and dependency semantics to distinct handles", () => {
+  it("keeps every selected node visible while designating one primary node for the inline composer", () => {
+    const draft = activeDraft();
+    const [first, second] = draft.nodes;
+    const nodes = toFlowNodes(draft, second.id, {}, 2, [first.id, second.id]);
+
+    expect(nodes.find((node) => node.id === first.id)).toMatchObject({
+      selected: true,
+      data: { primarySelected: false },
+    });
+    expect(nodes.find((node) => node.id === second.id)).toMatchObject({
+      selected: true,
+      data: { primarySelected: true },
+    });
+  });
+
+  it("projects a durable layout group behind its members with derived bounds", () => {
+    const first = {
+      id: "first",
+      kind: "shot",
+      title: "镜头 A",
+      position: { x: 100, y: 100 },
+      spec: { kind: "shot", mediaKind: "image" },
+    };
+    const second = {
+      id: "second",
+      kind: "composition",
+      title: "文本 B",
+      position: { x: 500, y: 240 },
+      spec: { kind: "composition", role: "text", mediaType: "text/plain" },
+    };
+    const group = {
+      id: "group",
+      kind: "composition",
+      title: "第一幕",
+      position: { x: 100, y: 100 },
+      spec: { kind: "composition", role: "group", mediaType: "application/json", memberNodeIds: [first.id, second.id] },
+    };
+    const draft = { nodes: [first, second, group], edges: [] };
+
+    expect(isLayoutGroupNode(group)).toBe(true);
+    expect(getLayoutGroupBounds(draft, group)).toEqual({
+      x: 70,
+      y: 40,
+      width: 635,
+      height: 405,
+      memberNodeIds: [first.id, second.id],
+    });
+    const nodes = toFlowNodes(draft, null, {}, 2, [first.id, second.id]);
+    const frame = nodes[0];
+    expect(frame).toMatchObject({
+      id: group.id,
+      type: "groupFrame",
+      position: { x: 140, y: 80 },
+      width: 1270,
+      height: 810,
+      selected: false,
+      selectable: false,
+      connectable: false,
+      data: { isLayoutGroup: true, groupSelected: true },
+    });
+    expect(nodes.find((node) => node.id === first.id)).toMatchObject({ type: "creatorNode", selected: true });
+    expect(flowNodesToCanvasPositions([frame, nodes.find((node) => node.id === first.id)], 2)).toEqual([
+      { nodeId: first.id, position: first.position },
+    ]);
+    expect(buildAutoLayoutPositions(draft)).toEqual({
+      first: { x: 0, y: 0 },
+      second: { x: 0, y: 228 },
+    });
+  });
+
+  it("converts a React Flow group drag back to canonical document coordinates", () => {
+    expect(flowNodesToCanvasPositions([
+      { id: "first", position: { x: 201, y: 399 } },
+      { id: "second", position: { x: 520, y: 0 } },
+      { id: "first", position: { x: 204, y: 402 } },
+      { id: "ignored", position: { x: Number.NaN, y: 0 } },
+    ], 2)).toEqual([
+      { nodeId: "first", position: { x: 102, y: 201 } },
+      { nodeId: "second", position: { x: 260, y: 0 } },
+    ]);
+  });
+
+  it("keeps a one-node marquee selection instead of relying on React Flow local state", () => {
+    const oneSelected = [
+      { id: "shot-a" },
+      { id: "" },
+      null,
+    ];
+    expect(flowNodesToSelectionIds([
+      ...oneSelected,
+      { id: "shot-a" },
+      { id: "shot-b" },
+    ])).toEqual(["shot-a", "shot-b"]);
+    expect(shouldSyncFlowSelection(oneSelected, false)).toBe(false);
+    expect(shouldSyncFlowSelection(oneSelected, true)).toBe(true);
+  });
+
+  it("maps sequence and dependency semantics through shared canvas ports", () => {
     const edges = toFlowEdges(activeDraft());
     const sequence = edges.find((edge) => edge.data.kind === "sequence");
     const dependency = edges.find((edge) => edge.data.kind === "dependency");
 
     expect(sequence).toMatchObject({
-      sourceHandle: HANDLE_IDS.sequenceSource,
-      targetHandle: HANDLE_IDS.sequenceTarget,
+      sourceHandle: HANDLE_IDS.output,
+      targetHandle: HANDLE_IDS.input,
       type: "canvasEdge",
     });
     expect(dependency).toMatchObject({
-      sourceHandle: HANDLE_IDS.sequenceSource,
-      targetHandle: HANDLE_IDS.dependencyTarget,
+      sourceHandle: HANDLE_IDS.output,
+      targetHandle: HANDLE_IDS.input,
       type: "canvasEdge",
     });
+  });
+
+  it("derives a composition's visible order from explicit sequence edges", () => {
+    const draft = {
+      nodes: [
+        { id: "shot-a", spec: { kind: "shot" } },
+        { id: "shot-b", spec: { kind: "shot" } },
+        { id: "shot-c", spec: { kind: "shot" } },
+        { id: "output", spec: { kind: "composition", role: "composition" } },
+      ],
+      edges: [
+        { kind: "dependency", sourceNodeId: "shot-a", targetNodeId: "output" },
+        { kind: "dependency", sourceNodeId: "shot-b", targetNodeId: "output" },
+        { kind: "dependency", sourceNodeId: "shot-c", targetNodeId: "output" },
+        { kind: "sequence", sourceNodeId: "shot-a", targetNodeId: "shot-b" },
+        { kind: "sequence", sourceNodeId: "shot-b", targetNodeId: "shot-c" },
+      ],
+    };
+
+    expect(resolveCompositionShotOrder(draft, "output")).toEqual({
+      status: "ordered",
+      nodeIds: ["shot-a", "shot-b", "shot-c"],
+    });
+    expect(resolveCompositionShotOrder({ ...draft, edges: draft.edges.filter((edge) => edge.kind !== "sequence") }, "output"))
+      .toEqual({ status: "incomplete", nodeIds: ["shot-a", "shot-b", "shot-c"] });
   });
 
   it("animates edges connected to the selection and active execution flow", () => {
@@ -72,6 +217,15 @@ describe("React Flow projection", () => {
       nodes: draft.nodes.map((node) => node.id === edge.targetNodeId ? { ...node, status: "running" } : node),
     };
     expect(toFlowEdges(runningDraft).find((item) => item.id === edge.id).className).toContain("active");
+  });
+
+  it("projects an explicitly selected edge for visible selection and keyboard deletion", () => {
+    const draft = activeDraft();
+    const edge = draft.edges[0];
+    const selected = toFlowEdges(draft, null, [edge.id]).find((item) => item.id === edge.id);
+
+    expect(selected).toMatchObject({ selected: true, data: { selected: true } });
+    expect(selected.className).toContain("selected");
   });
 
   it("uses wide media cards and square text cards without changing graph semantics", () => {
@@ -127,9 +281,9 @@ describe("React Flow projection", () => {
 
     expect(connectionToGraphMutation(withoutFirstDependency, {
       source: shots[0].id,
-      sourceHandle: HANDLE_IDS.sequenceSource,
+      sourceHandle: HANDLE_IDS.output,
       target: composition.id,
-      targetHandle: HANDLE_IDS.dependencyTarget,
+      targetHandle: HANDLE_IDS.input,
     })).toEqual({
       kind: "dependency",
       sourceNodeId: shots[0].id,
@@ -138,16 +292,16 @@ describe("React Flow projection", () => {
 
     expect(connectionToGraphMutation(draft, {
       source: shots[0].id,
-      sourceHandle: HANDLE_IDS.sequenceSource,
+      sourceHandle: HANDLE_IDS.output,
       target: composition.id,
-      targetHandle: HANDLE_IDS.dependencyTarget,
+      targetHandle: HANDLE_IDS.input,
     })).toBeNull();
 
     expect(connectionToGraphMutation(draft, {
       source: shots[2].id,
-      sourceHandle: HANDLE_IDS.sequenceSource,
+      sourceHandle: HANDLE_IDS.output,
       target: shots[0].id,
-      targetHandle: HANDLE_IDS.sequenceTarget,
+      targetHandle: HANDLE_IDS.input,
     })).toBeNull();
 
     expect(connectionToGraphMutation(draft, {
@@ -156,6 +310,56 @@ describe("React Flow projection", () => {
       target: composition.id,
       targetHandle: HANDLE_IDS.sequenceTarget,
     })).toBeNull();
+
+    const context = {
+      id: "context_character",
+      kind: "composition",
+      spec: { role: "character", prompt: "Keep the protagonist consistent." },
+    };
+    const withContext = { ...draft, nodes: [context, ...draft.nodes] };
+    expect(connectionToGraphMutation(withContext, {
+      source: context.id,
+      sourceHandle: HANDLE_IDS.output,
+      target: shots[0].id,
+      targetHandle: HANDLE_IDS.input,
+    })).toEqual({
+      kind: "dependency",
+      sourceNodeId: context.id,
+      targetNodeId: shots[0].id,
+    });
+
+    const outputComposition = {
+      id: "output_composition",
+      kind: "composition",
+      spec: { role: "composition", mediaType: "video/mp4" },
+    };
+    expect(connectionToGraphMutation({
+      ...withContext,
+      nodes: [...withContext.nodes, outputComposition],
+    }, {
+      source: context.id,
+      sourceHandle: HANDLE_IDS.output,
+      target: outputComposition.id,
+      targetHandle: HANDLE_IDS.input,
+    })).toBeNull();
+
+    const group = {
+      id: "layout_group",
+      kind: "composition",
+      spec: { role: "group", mediaType: "application/json", memberNodeIds: [shots[0].id, shots[1].id] },
+    };
+    expect(connectionToGraphMutation({ ...draft, nodes: [...draft.nodes, group] }, {
+      source: group.id,
+      sourceHandle: HANDLE_IDS.output,
+      target: shots[0].id,
+      targetHandle: HANDLE_IDS.input,
+    })).toBeNull();
+  });
+
+  it("reports only real incompatible-handle drops, not cancelled connection gestures", () => {
+    expect(connectionRejectionMessage({ isValid: false })).toContain("未创建连线");
+    expect(connectionRejectionMessage({ isValid: true })).toBeNull();
+    expect(connectionRejectionMessage({ isValid: null })).toBeNull();
   });
 
   it("places a new node in the nearest collision-free slot", () => {

@@ -16,14 +16,14 @@
       "createdAt": "2026-08-19T12:00:00Z",
       "updatedAt": "2026-08-19T12:00:10Z",
       "nodes": [
-      {
-        "id": "node_019c8f55-9101-7000-8000-000000000001",
+        {
+          "id": "node_019c8f55-9101-7000-8000-000000000001",
           "title": "图片节点 2",
           "position": { "x": 145, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "shot",
-        "prompt": "测试素材：抽象蓝色圆形。",
+            "prompt": "测试素材：抽象蓝色圆形。",
             "mediaKind": "image",
             "inputAssetIds": [],
             "requirements": {
@@ -42,20 +42,20 @@
             ]
           }
         },
-      {
-        "id": "node_019c8f55-9102-7000-8000-000000000002",
+        {
+          "id": "node_019c8f55-9102-7000-8000-000000000002",
           "title": "文本节点 1",
           "position": { "x": 559, "y": 0 },
           "specRevision": 1,
           "spec": {
             "kind": "composition",
             "role": "text",
-        "prompt": "测试镜头：城市天际线，夜景。",
+            "prompt": "测试镜头：城市天际线，夜景。",
             "mediaType": "text/plain"
           },
           "execution": {
             "status": "dirty",
-          "inputFingerprint": "sha256:0eba6b367519e340368c57485e6e43d58670887565e88a0fc9fa4caf8ad52af9",
+            "inputFingerprint": "sha256:0eba6b367519e340368c57485e6e43d58670887565e88a0fc9fa4caf8ad52af9",
             "outputAssetIds": []
           }
         },

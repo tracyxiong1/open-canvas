@@ -44,15 +44,8 @@ function resolveRoute(node, job) {
   };
 }
 
-function buildPreviewNode(node, jobsById, assetsById, resolveAssetUrl) {
-  assertRecord(node, "node");
-  assertRecord(node.spec, "node.spec");
-  assertRecord(node.execution, "node.execution");
-
-  const activeJob = node.execution.activeJobId
-    ? jobsById.get(node.execution.activeJobId) ?? null
-    : null;
-  const outputAssets = node.execution.outputAssetIds.map((assetId) => {
+function projectAssets(assetIds, assetsById, resolveAssetUrl, node) {
+  return assetIds.map((assetId) => {
     const asset = assetsById.get(assetId);
     if (!asset) return { id: assetId, missing: true, previewUrl: null };
     return {
@@ -60,6 +53,41 @@ function buildPreviewNode(node, jobsById, assetsById, resolveAssetUrl) {
       previewUrl: resolveAssetUrl?.(asset, node) ?? null,
     };
   });
+}
+
+function projectGenerationHistory(node, jobs, assetsById, resolveAssetUrl) {
+  return jobs
+    .filter((job) => (
+      job.nodeId === node.id
+      && job.status === "succeeded"
+      && job.id !== node.execution.activeJobId
+      && job.outputAssetIds.length > 0
+    ))
+    .sort((left, right) => (
+      right.attempt - left.attempt
+      || right.updatedAt.localeCompare(left.updatedAt)
+      || right.id.localeCompare(left.id)
+    ))
+    .map((job) => ({
+      jobId: job.id,
+      attempt: job.attempt,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      inputFingerprint: job.inputFingerprint,
+      route: job.route ? { ...job.route } : null,
+      outputAssets: projectAssets(job.outputAssetIds, assetsById, resolveAssetUrl, node),
+    }));
+}
+
+function buildPreviewNode(node, jobs, jobsById, assetsById, resolveAssetUrl) {
+  assertRecord(node, "node");
+  assertRecord(node.spec, "node.spec");
+  assertRecord(node.execution, "node.execution");
+
+  const activeJob = node.execution.activeJobId
+    ? jobsById.get(node.execution.activeJobId) ?? null
+    : null;
+  const outputAssets = projectAssets(node.execution.outputAssetIds, assetsById, resolveAssetUrl, node);
 
   return {
     id: node.id,
@@ -77,6 +105,7 @@ function buildPreviewNode(node, jobsById, assetsById, resolveAssetUrl) {
     activeJob: activeJob ? structuredClone(activeJob) : null,
     route: resolveRoute(node, activeJob),
     outputAssets,
+    generationHistory: projectGenerationHistory(node, jobs, assetsById, resolveAssetUrl),
   };
 }
 
@@ -88,7 +117,7 @@ function buildDraft(draft, assetsById, resolveAssetUrl) {
 
   const jobsById = new Map(draft.jobs.map((job) => [job.id, job]));
   const nodes = draft.nodes.map((node) =>
-    buildPreviewNode(node, jobsById, assetsById, resolveAssetUrl),
+    buildPreviewNode(node, draft.jobs, jobsById, assetsById, resolveAssetUrl),
   );
 
   return {
@@ -99,7 +128,10 @@ function buildDraft(draft, assetsById, resolveAssetUrl) {
     nodes,
     edges: structuredClone(draft.edges),
     jobs: structuredClone(draft.jobs),
-    statusCounts: nodes.reduce((counts, node) => {
+    // Layout groups are durable canvas structure, not pending generation
+    // work. Excluding them keeps the header's task totals honest while the
+    // group frame itself remains in the shared project document.
+    statusCounts: nodes.filter((node) => node.spec?.role !== "group").reduce((counts, node) => {
       counts[node.status] = (counts[node.status] ?? 0) + 1;
       return counts;
     }, {}),
