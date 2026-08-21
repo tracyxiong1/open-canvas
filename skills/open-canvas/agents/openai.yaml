@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Canvas"
+  short_description: "在本地项目中规划、修改、运行并预览 AI 视频创作画布流程"
+  default_prompt: "Use $open-canvas to create a project-local video creation canvas from my prompt."
