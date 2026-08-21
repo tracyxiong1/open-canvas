@@ -5,6 +5,7 @@ import schema from "../schema/canvas-document-v1.schema.json" with { type: "json
 import { canonicalSha256 } from "./canonical.js";
 import type {
   Asset,
+  CompositionSpec,
   OpenCanvasDraftBasedProjectDocumentV1 as CanvasDocument,
   Draft,
   Node,
@@ -35,18 +36,50 @@ function duplicates(values: string[]): boolean {
   return new Set(values).size !== values.length;
 }
 
-function isContextComposition(node: Node): boolean {
-  return node.spec.kind === "composition" && node.spec.role !== undefined && node.spec.role !== "composition";
+/**
+ * A layout group is a durable, project-local frame around existing nodes. It
+ * deliberately has no inputs, outputs, or generation lifecycle: only its
+ * membership belongs in the document model. Keeping it as a typed node makes
+ * group membership survive CLI, Skill, and Studio round trips without
+ * introducing a separate workspace-level library.
+ */
+export type LayoutGroupNode = Node & {
+  spec: CompositionSpec & {
+    role: "group";
+    memberNodeIds: [string, string, ...string[]];
+  };
+};
+
+export function isLayoutGroup(node: Node): node is LayoutGroupNode {
+  return node.spec.kind === "composition" && node.spec.role === "group";
+}
+
+export function isContextComposition(node: Node): boolean {
+  return node.spec.kind === "composition"
+    && node.spec.role !== undefined
+    && node.spec.role !== "composition"
+    && !isLayoutGroup(node);
+}
+
+/**
+ * Dependency inputs keep document node order. Sequence order is only a
+ * property of export compositions, so conditioning a shot with context nodes
+ * never relies on edge insertion order.
+ */
+export function orderedDependencyNodes(draft: Draft, targetNodeId: string): Node[] {
+  const sourceIds = new Set(
+    draft.edges
+      .filter((edge) => edge.kind === "dependency" && edge.targetNodeId === targetNodeId)
+      .map((edge) => edge.sourceNodeId),
+  );
+  return draft.nodes.filter((node) => sourceIds.has(node.id));
 }
 
 export function orderedCompositionDependencies(draft: Draft, compositionId: string): Node[] {
   const nodeById = new Map(draft.nodes.map((node) => [node.id, node]));
-  const dependencyIds = draft.edges
-    .filter((edge) => edge.kind === "dependency" && edge.targetNodeId === compositionId)
-    .map((edge) => edge.sourceNodeId);
-  if (dependencyIds.length <= 1) {
-    return dependencyIds.map((id) => nodeById.get(id)!);
-  }
+  const dependencies = orderedDependencyNodes(draft, compositionId);
+  const dependencyIds = dependencies.map((node) => node.id);
+  if (dependencyIds.length <= 1) return dependencies;
 
   const dependencySet = new Set(dependencyIds);
   const next = new Map<string, string>();
@@ -82,31 +115,66 @@ export function orderedCompositionDependencies(draft: Draft, compositionId: stri
   return ordered;
 }
 
-export function computeNodeFingerprint(document: CanvasDocument, draft: Draft, node: Node): string {
+function assetRecords(document: CanvasDocument, assetIds: string[], owner: string): Array<{ assetId: string; checksumSha256: string }> {
   const assets = new Map(document.assets.map((asset) => [asset.id, asset]));
+  return assetIds.map((assetId) => {
+    const asset = assets.get(assetId);
+    if (!asset) throw new CanvasValidationError([`${owner} references unknown asset ${assetId}`]);
+    return { assetId, checksumSha256: asset.checksumSha256 };
+  });
+}
+
+function dependencyRecords(draft: Draft, nodeId: string): Array<{ nodeId: string; inputFingerprint: string; outputAssetIds: string[] }> {
+  return orderedDependencyNodes(draft, nodeId).map((dependency) => ({
+    nodeId: dependency.id,
+    inputFingerprint: dependency.execution.inputFingerprint,
+    outputAssetIds: dependency.execution.outputAssetIds,
+  }));
+}
+
+export function computeNodeFingerprint(document: CanvasDocument, draft: Draft, node: Node): string {
   if (node.spec.kind === "shot") {
+    const dependencies = dependencyRecords(draft, node.id);
     return canonicalSha256({
       schemaVersion: 1,
       kind: "shot",
       spec: node.spec,
-      inputAssets: node.spec.inputAssetIds.map((assetId) => {
-        const asset = assets.get(assetId);
-        if (!asset) {
-          throw new CanvasValidationError([`shot ${node.id} references unknown asset ${assetId}`]);
-        }
-        return { assetId, checksumSha256: asset.checksumSha256 };
-      }),
+      inputAssets: assetRecords(document, node.spec.inputAssetIds, `shot ${node.id}`),
+      ...(dependencies.length === 0 ? {} : { dependencies }),
     });
   }
+  if (isLayoutGroup(node)) {
+    return canonicalSha256({
+      schemaVersion: 1,
+      kind: "group",
+      spec: node.spec,
+    });
+  }
+  const referenceAssets = assetRecords(document, node.spec.referenceAssetIds ?? [], `composition ${node.id}`);
+  if (isContextComposition(node)) {
+    const dependencies = dependencyRecords(draft, node.id);
+    return canonicalSha256({
+      schemaVersion: 1,
+      // Keep v1 context-only documents stable. Context source data is carried
+      // by the canonical spec; dependency snapshots are appended only when a
+      // context node is actually wired into the graph.
+      kind: "composition",
+      spec: node.spec,
+      ...(referenceAssets.length === 0 ? {} : { referenceAssets }),
+      ...(dependencies.length === 0 ? {} : { dependencies }),
+    });
+  }
+  const dependencies = orderedCompositionDependencies(draft, node.id).map((dependency) => ({
+    nodeId: dependency.id,
+    inputFingerprint: dependency.execution.inputFingerprint,
+    outputAssetIds: dependency.execution.outputAssetIds,
+  }));
   return canonicalSha256({
     schemaVersion: 1,
     kind: "composition",
     spec: node.spec,
-    dependencies: orderedCompositionDependencies(draft, node.id).map((dependency) => ({
-      nodeId: dependency.id,
-      inputFingerprint: dependency.execution.inputFingerprint,
-      outputAssetIds: dependency.execution.outputAssetIds,
-    })),
+    ...(referenceAssets.length === 0 ? {} : { referenceAssets }),
+    dependencies,
   });
 }
 
@@ -125,6 +193,27 @@ function validateDraft(document: CanvasDocument, draft: Draft): void {
   if (duplicates(draft.edges.map((edge) => edge.id))) throw new CanvasValidationError([`duplicate edge ID in ${draft.id}`]);
   if (duplicates(draft.jobs.map((job) => job.id))) throw new CanvasValidationError([`duplicate job ID in ${draft.id}`]);
 
+  const groupMembership = new Map<string, string>();
+  for (const node of draft.nodes) {
+    if (!isLayoutGroup(node)) continue;
+    const memberNodeIds = node.spec.memberNodeIds ?? [];
+    if (memberNodeIds.length < 2) {
+      throw new CanvasValidationError([`group ${node.id} must contain at least two nodes`]);
+    }
+    for (const memberNodeId of memberNodeIds) {
+      const member = nodes.get(memberNodeId);
+      if (!member) throw new CanvasValidationError([`group ${node.id} references unknown member ${memberNodeId}`]);
+      if (member.id === node.id || isLayoutGroup(member)) {
+        throw new CanvasValidationError([`group ${node.id} cannot contain a group node`]);
+      }
+      const existingGroupId = groupMembership.get(memberNodeId);
+      if (existingGroupId) {
+        throw new CanvasValidationError([`node ${memberNodeId} belongs to multiple groups: ${existingGroupId}, ${node.id}`]);
+      }
+      groupMembership.set(memberNodeId, node.id);
+    }
+  }
+
   const triples = new Set<string>();
   const dependencyTargets = new Map<string, string[]>();
   const sequenceTargets = new Map<string, string[]>();
@@ -139,11 +228,23 @@ function validateDraft(document: CanvasDocument, draft: Draft): void {
     const target = nodes.get(edge.targetNodeId);
     if (!source || !target) throw new CanvasValidationError([`edge ${edge.id} references unknown node`]);
     if (source.id === target.id) throw new CanvasValidationError([`edge ${edge.id} is a self-edge`]);
+    if (isLayoutGroup(source) || isLayoutGroup(target)) {
+      throw new CanvasValidationError([`edge ${edge.id} cannot connect a layout group`]);
+    }
     const triple = `${edge.kind}:${source.id}:${target.id}`;
     if (triples.has(triple)) throw new CanvasValidationError([`duplicate edge ${triple}`]);
     triples.add(triple);
     if (edge.kind === "dependency") {
-      if (target.spec.kind !== "composition") throw new CanvasValidationError([`dependency ${edge.id} must target a composition`]);
+      if (target.spec.kind !== "composition" && target.spec.kind !== "shot") {
+        throw new CanvasValidationError([`dependency ${edge.id} must target a shot or composition`]);
+      }
+      if (
+        target.spec.kind === "composition" &&
+        !isContextComposition(target) &&
+        isContextComposition(source)
+      ) {
+        throw new CanvasValidationError([`dependency ${edge.id} cannot feed context directly into an output composition`]);
+      }
       dependencyTargets.get(source.id)!.push(target.id);
     } else if (source.spec.kind !== "shot" || target.spec.kind !== "shot") {
       throw new CanvasValidationError([`sequence ${edge.id} must connect shots`]);
@@ -188,11 +289,25 @@ function validateDraft(document: CanvasDocument, draft: Draft): void {
     if (isContextComposition(nodes.get(job.nodeId)!)) {
       throw new CanvasValidationError([`context node ${job.nodeId} cannot own a generation job`]);
     }
+    if (isLayoutGroup(nodes.get(job.nodeId)!)) {
+      throw new CanvasValidationError([`layout group ${job.nodeId} cannot own a generation job`]);
+    }
     if (job.outputAssetIds.some((id) => !assets.has(id))) throw new CanvasValidationError([`job ${job.id} references unknown asset`]);
   }
   for (const node of draft.nodes) {
     if (isContextComposition(node) && node.execution.status !== "dirty") {
       throw new CanvasValidationError([`context node ${node.id} must stay dirty`]);
+    }
+    if (isLayoutGroup(node)) {
+      if (node.execution.status !== "dirty" || node.execution.activeJobId !== undefined || node.execution.outputAssetIds.length > 0) {
+        throw new CanvasValidationError([`layout group ${node.id} must not carry generation state`]);
+      }
+      if (node.spec.prompt !== undefined || (node.spec.referenceAssetIds?.length ?? 0) > 0) {
+        throw new CanvasValidationError([`layout group ${node.id} must not carry prompt or asset references`]);
+      }
+    }
+    if (node.spec.kind === "composition" && (node.spec.referenceAssetIds ?? []).some((id) => !assets.has(id))) {
+      throw new CanvasValidationError([`composition ${node.id} references unknown asset`]);
     }
     if (node.execution.outputAssetIds.some((id) => !assets.has(id))) {
       throw new CanvasValidationError([`node ${node.id} references unknown output asset`]);

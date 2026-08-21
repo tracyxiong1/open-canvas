@@ -5,6 +5,7 @@ import { test } from "node:test";
 import {
   CanvasValidationError,
   addNode,
+  createGroup,
   createProject,
   parseCanvasDocument,
 } from "../src/index.js";
@@ -55,6 +56,9 @@ test("accepts all persisted canvas context roles", () => {
     ["audio", "audio/mpeg"],
     ["script", "text/plain"],
     ["asset-library", "application/json"],
+    ["asset-reference", "application/json"],
+    ["character", "application/json"],
+    ["scene-style", "application/json"],
   ] as const;
 
   for (const [role, mediaType] of contexts) {
@@ -73,6 +77,43 @@ test("accepts all persisted canvas context roles", () => {
     });
     assert.equal(parseCanvasDocument(document), document);
   }
+});
+
+test("rejects layout groups with non-layout data or graph edges", () => {
+  let document = createProject({ title: "Layout group" });
+  for (const title of ["A", "B"]) {
+    const draft = document.drafts[0]!;
+    document = addNode(document, {
+      draftId: draft.id,
+      expectedProjectRevision: document.revision,
+      expectedDraftRevision: draft.revision,
+      title,
+      spec: { kind: "shot", prompt: title, mediaKind: "image", inputAssetIds: [] },
+    });
+  }
+  const draft = document.drafts[0]!;
+  document = createGroup(document, {
+    draftId: draft.id,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: draft.revision,
+    memberNodeIds: draft.nodes.map((node) => node.id),
+  });
+  const group = document.drafts[0]!.nodes.at(-1)!;
+
+  const withPrompt = structuredClone(document);
+  const promptGroup = withPrompt.drafts[0]!.nodes.at(-1)!;
+  if (promptGroup.spec.kind !== "composition") throw new Error("Expected a layout group composition");
+  promptGroup.spec.prompt = "not a prompt node";
+  assert.throws(() => parseCanvasDocument(withPrompt), CanvasValidationError);
+
+  const withEdge = structuredClone(document);
+  withEdge.drafts[0]!.edges.push({
+    id: "edge_019c8f55-0000-7000-8000-000000000999",
+    kind: "dependency",
+    sourceNodeId: group.id,
+    targetNodeId: document.drafts[0]!.nodes[0]!.id,
+  });
+  assert.throws(() => parseCanvasDocument(withEdge), /cannot connect a layout group/);
 });
 
 test("rejects persisted generation state for canvas context nodes", async () => {

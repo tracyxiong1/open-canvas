@@ -6,3 +6,4 @@ export * from "./mutations.js";
 export * from "./persistence.js";
 export * from "./providers.js";
 export * from "./jobs.js";
+export * from "./script-shots.js";

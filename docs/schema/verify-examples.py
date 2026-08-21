@@ -52,7 +52,7 @@ def validate_draft(document: dict, draft: dict) -> None:
         source = nodes[source_id]
         target = nodes[target_id]
         if edge["kind"] == "dependency":
-            assert target["spec"]["kind"] == "composition"
+            assert target["spec"]["kind"] in ("composition", "shot")
             dependency[source_id].append(target_id)
         else:
             assert source["spec"]["kind"] == target["spec"]["kind"] == "shot"

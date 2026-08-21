@@ -223,6 +223,11 @@
           "type": "integer",
           "minimum": 1
         },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
         "durationSeconds": {
           "type": "number",
           "exclusiveMinimum": 0
@@ -302,12 +307,31 @@
             "frame-analysis",
             "audio",
             "script",
-            "asset-library"
+            "asset-library",
+            "asset-reference",
+            "character",
+            "scene-style",
+            "group"
           ]
         },
         "prompt": {
           "type": "string",
           "minLength": 1
+        },
+        "referenceAssetIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/assetId"
+          }
+        },
+        "memberNodeIds": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nodeId"
+          }
         }
       },
       "allOf": [
@@ -322,7 +346,10 @@
                   "frame-analysis",
                   "audio",
                   "script",
-                  "asset-library"
+                  "asset-library",
+                  "asset-reference",
+                  "character",
+                  "scene-style"
                 ]
               }
             },
@@ -334,6 +361,27 @@
             "required": [
               "prompt"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "role": {
+                "const": "group"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "then": {
+            "required": [
+              "memberNodeIds"
+            ],
+            "properties": {
+              "prompt": false,
+              "referenceAssetIds": false
+            }
           }
         }
       ]
@@ -778,6 +826,26 @@
               "properties": {
                 "kind": {
                   "const": "import"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "draftId",
+                "jobId"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "deleted-job"
+                },
+                "draftId": {
+                  "$ref": "#/$defs/draftId"
+                },
+                "jobId": {
+                  "$ref": "#/$defs/jobId"
                 }
               }
             }

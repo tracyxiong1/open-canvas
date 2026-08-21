@@ -8,10 +8,29 @@ export type AssetId = string;
 export type CompositionSpec = {
   [k: string]: unknown;
 } & {
+  [k: string]: unknown;
+} & {
   kind: "composition";
   mediaType: string;
-  role?: "composition" | "text" | "smart-edit" | "director" | "frame-analysis" | "audio" | "script" | "asset-library";
+  role?:
+    | "composition"
+    | "text"
+    | "smart-edit"
+    | "director"
+    | "frame-analysis"
+    | "audio"
+    | "script"
+    | "asset-library"
+    | "asset-reference"
+    | "character"
+    | "scene-style"
+    | "group";
   prompt?: string;
+  referenceAssetIds?: AssetId[];
+  /**
+   * @minItems 2
+   */
+  memberNodeIds?: [NodeId, NodeId, ...NodeId[]];
 };
 export type Execution = {
   [k: string]: unknown;
@@ -103,6 +122,7 @@ export interface OutputRequirements {
   aspectRatio?: "16:9" | "9:16" | "1:1";
   width?: number;
   height?: number;
+  count?: number;
   durationSeconds?: number;
   audio?: "required" | "forbidden" | "either";
   mediaType?: string;
@@ -146,6 +166,11 @@ export interface Asset {
       }
     | {
         kind: "import";
+      }
+    | {
+        kind: "deleted-job";
+        draftId: DraftId;
+        jobId: JobId;
       };
   createdAt: Timestamp;
 }
