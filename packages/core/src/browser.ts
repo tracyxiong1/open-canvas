@@ -3,4 +3,5 @@ export * from "./canvas-document.generated.js";
 export * from "./canonical.js";
 export * from "./graph.js";
 export * from "./mutations.js";
+export * from "./script-shots.js";
 export * from "./validation.js";

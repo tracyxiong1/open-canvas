@@ -12,6 +12,7 @@ import {
   createProject,
   connectNodes,
   parseCanvasDocument,
+  registerImportedAsset,
   resumeGeneration,
   startGeneration,
   updateNode,
@@ -92,6 +93,67 @@ test("mock failure is stable and contains no prompt or credential value", async 
     retryable: false,
     message: "deterministic mock failure",
   });
+});
+
+test("an image job keeps every provider candidate as a project-local output", () => {
+  const empty = createProject({ title: "Multiple image candidates" });
+  const withShot = addNode(empty, {
+    draftId: empty.activeDraftId,
+    expectedProjectRevision: empty.revision,
+    expectedDraftRevision: empty.drafts[0].revision,
+    title: "候选镜头",
+    spec: {
+      kind: "shot",
+      prompt: "A quiet orbital city",
+      mediaKind: "image",
+      inputAssetIds: [],
+      requirements: { mediaType: "image/png", count: 2 },
+    },
+  });
+  const nodeId = withShot.drafts[0].nodes[0].id;
+  assert.throws(
+    () => startGeneration(withShot, {
+      draftId: withShot.activeDraftId,
+      nodeId,
+      expectedProjectRevision: withShot.revision,
+      expectedDraftRevision: withShot.drafts[0].revision,
+    }),
+    /Mock provider cannot satisfy output requirements/,
+  );
+  const started = startGeneration(withShot, {
+    draftId: withShot.activeDraftId,
+    nodeId,
+    expectedProjectRevision: withShot.revision,
+    expectedDraftRevision: withShot.drafts[0].revision,
+    resolveRoute: () => ({ providerId: "openai", modelId: "gpt-image-2", selectionSource: "registry_default" }),
+  });
+
+  assert.throws(
+    () => completeGeneration(started.document, {
+      draftId: started.document.activeDraftId,
+      jobId: started.request.jobId,
+      providerJobId: "openai-image:test",
+      artifacts: [{ kind: "image", mediaType: "image/png", bytes: Buffer.from("candidate-one") }],
+    }),
+    /output count/,
+  );
+
+  const completed = completeGeneration(started.document, {
+    draftId: started.document.activeDraftId,
+    jobId: started.request.jobId,
+    providerJobId: "openai-image:test",
+    artifacts: [
+      { kind: "image", mediaType: "image/png", bytes: Buffer.from("candidate-one") },
+      { kind: "image", mediaType: "image/png", bytes: Buffer.from("candidate-two") },
+    ],
+  });
+  const draft = completed.drafts[0];
+  const node = draft.nodes.find((candidate) => candidate.id === nodeId)!;
+  assert.equal(node.execution.status, "succeeded");
+  assert.equal(node.execution.outputAssetIds.length, 2);
+  assert.notEqual(node.execution.outputAssetIds[0], node.execution.outputAssetIds[1]);
+  assert.deepEqual(draft.jobs[0]?.outputAssetIds, node.execution.outputAssetIds);
+  assert.equal(completed.assets.length, 2);
 });
 
 test("mock video artifact is a self-contained MP4 with media metadata", async () => {
@@ -266,6 +328,112 @@ test("context nodes remain editable prompt context and never create a generation
   );
 });
 
+test("a role or local-reference node can condition a shot and contribute imported inputs", () => {
+  const empty = createProject({ title: "Context conditioned shot" });
+  const imported = registerImportedAsset(empty, {
+    expectedProjectRevision: empty.revision,
+    kind: "image",
+    mediaType: "image/png",
+    byteLength: 18,
+    checksumSha256: `sha256:${"b".repeat(64)}`,
+  });
+  const context = addNode(imported.document, {
+    draftId: imported.document.activeDraftId,
+    expectedProjectRevision: imported.document.revision,
+    expectedDraftRevision: imported.document.drafts[0].revision,
+    title: "主角设定",
+    spec: {
+      kind: "composition",
+      mediaType: "application/json",
+      role: "character",
+      prompt: "短发摄影师，深蓝外套，保持跨镜头一致性。",
+      referenceAssetIds: [imported.asset.id],
+    },
+  });
+  const shot = addNode(context, {
+    draftId: context.activeDraftId,
+    expectedProjectRevision: context.revision,
+    expectedDraftRevision: context.drafts[0].revision,
+    title: "城市夜景",
+    spec: { kind: "shot", prompt: "雨夜街头的跟拍镜头。", mediaKind: "image", inputAssetIds: [] },
+  });
+  const contextNodeId = shot.drafts[0].nodes[0]!.id;
+  const shotNodeId = shot.drafts[0].nodes[1]!.id;
+  const connected = connectNodes(shot, {
+    draftId: shot.activeDraftId,
+    expectedProjectRevision: shot.revision,
+    expectedDraftRevision: shot.drafts[0].revision,
+    kind: "dependency",
+    sourceNodeId: contextNodeId,
+    targetNodeId: shotNodeId,
+  });
+
+  const started = startGeneration(connected, {
+    draftId: connected.activeDraftId,
+    nodeId: shotNodeId,
+    expectedProjectRevision: connected.revision,
+    expectedDraftRevision: connected.drafts[0].revision,
+  });
+  assert.match(started.request.prompt, /主角设定/);
+  assert.match(started.request.prompt, /短发摄影师/);
+  assert.deepEqual(started.request.inputs.map((input) => input.assetId), [imported.asset.id]);
+  assert.equal(started.document.drafts[0]!.nodes[0]!.execution.status, "dirty");
+  assert.equal(started.document.drafts[0]!.nodes[1]!.execution.status, "queued");
+});
+
+test("a project-local script can condition a video shot and contribute its local reference", () => {
+  const empty = createProject({ title: "Script conditioned video" });
+  const imported = registerImportedAsset(empty, {
+    expectedProjectRevision: empty.revision,
+    kind: "image",
+    mediaType: "image/png",
+    byteLength: 20,
+    checksumSha256: `sha256:${"c".repeat(64)}`,
+  });
+  const script = addNode(imported.document, {
+    draftId: imported.document.activeDraftId,
+    expectedProjectRevision: imported.document.revision,
+    expectedDraftRevision: imported.document.drafts[0].revision,
+    title: "三镜头脚本",
+    spec: {
+      kind: "composition",
+      mediaType: "text/plain",
+      role: "script",
+      prompt: "第一镜：雨夜抵达。第二镜：穿过车站。第三镜：列车驶离。",
+      referenceAssetIds: [imported.asset.id],
+    },
+  });
+  const shot = addNode(script, {
+    draftId: script.activeDraftId,
+    expectedProjectRevision: script.revision,
+    expectedDraftRevision: script.drafts[0].revision,
+    title: "镜头 1",
+    spec: { kind: "shot", prompt: "镜头化脚本的第一段。", mediaKind: "video", inputAssetIds: [] },
+  });
+  const scriptNodeId = shot.drafts[0]!.nodes[0]!.id;
+  const shotNodeId = shot.drafts[0]!.nodes[1]!.id;
+  const connected = connectNodes(shot, {
+    draftId: shot.activeDraftId,
+    expectedProjectRevision: shot.revision,
+    expectedDraftRevision: shot.drafts[0].revision,
+    kind: "dependency",
+    sourceNodeId: scriptNodeId,
+    targetNodeId: shotNodeId,
+  });
+
+  const started = startGeneration(connected, {
+    draftId: connected.activeDraftId,
+    nodeId: shotNodeId,
+    expectedProjectRevision: connected.revision,
+    expectedDraftRevision: connected.drafts[0].revision,
+    resolveRoute: () => ({ providerId: "test", modelId: "test-video", selectionSource: "registry_default" }),
+  });
+  assert.equal(started.request.kind, "video");
+  assert.match(started.request.prompt, /三镜头脚本/);
+  assert.match(started.request.prompt, /第一镜：雨夜抵达/);
+  assert.deepEqual(started.request.inputs.map((input) => input.assetId), [imported.asset.id]);
+});
+
 test("mock routing accepts partial compatible hints and rejects impossible requirements", () => {
   const createShot = (routing: any, requirements: any = {}) => {
     const empty = createProject({ title: "Routing" });
@@ -321,6 +489,45 @@ test("mock routing accepts partial compatible hints and rejects impossible requi
       /requirements/,
     );
   }
+});
+
+test("a caller-provided production route persists before submission without mock limits", () => {
+  const empty = createProject({ title: "Production route" });
+  const withShot = addNode(empty, {
+    draftId: empty.activeDraftId,
+    expectedProjectRevision: empty.revision,
+    expectedDraftRevision: empty.drafts[0].revision,
+    title: "Poster",
+    spec: {
+      kind: "shot",
+      prompt: "A vertical orbital-city poster",
+      mediaKind: "image",
+      inputAssetIds: [],
+      requirements: {
+        aspectRatio: "9:16",
+        width: 1008,
+        height: 1792,
+        mediaType: "image/png",
+      },
+    },
+  });
+  const started = startGeneration(withShot, {
+    draftId: withShot.activeDraftId,
+    nodeId: withShot.drafts[0].nodes[0]!.id,
+    expectedProjectRevision: withShot.revision,
+    expectedDraftRevision: withShot.drafts[0].revision,
+    resolveRoute: () => ({
+      providerId: "openai",
+      modelId: "gpt-image-2",
+      selectionSource: "registry_default",
+    }),
+  });
+  assert.deepEqual(started.route, {
+    providerId: "openai",
+    modelId: "gpt-image-2",
+    selectionSource: "registry_default",
+  });
+  assert.deepEqual(started.document.drafts[0]!.jobs[0]!.route, started.route);
 });
 
 test("composition provider inputs follow sequence order rather than edge insertion order", async () => {
