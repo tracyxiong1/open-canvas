@@ -202,21 +202,27 @@ describe("React Flow projection", () => {
       .toEqual({ status: "incomplete", nodeIds: ["shot-a", "shot-b", "shot-c"] });
   });
 
-  it("animates edges connected to the selection and active execution flow", () => {
+  it("keeps selection-linked edges static and animates canonical execution flow", () => {
     const draft = activeDraft();
     const edge = draft.edges[0];
     const selectedEdges = toFlowEdges(draft, edge.sourceNodeId);
-    expect(selectedEdges.find((item) => item.id === edge.id).className).toContain("active");
-    expect(selectedEdges.find((item) => item.id === edge.id).data.active).toBe(true);
+    const selectionLinkedEdge = selectedEdges.find((item) => item.id === edge.id);
+    expect(selectionLinkedEdge.className).toContain("linked");
+    expect(selectionLinkedEdge.className).not.toContain("active");
+    expect(selectionLinkedEdge.data).toMatchObject({ linked: true, active: false });
 
     const unrelatedNode = draft.nodes.find((node) => node.id !== edge.sourceNodeId && node.id !== edge.targetNodeId);
-    expect(toFlowEdges(draft, unrelatedNode.id).find((item) => item.id === edge.id).className).not.toContain("active");
+    expect(toFlowEdges(draft, unrelatedNode.id).find((item) => item.id === edge.id).className).not.toContain("linked");
 
     const runningDraft = {
       ...draft,
-      nodes: draft.nodes.map((node) => node.id === edge.targetNodeId ? { ...node, status: "running" } : node),
+      nodes: draft.nodes.map((node) => node.id === edge.targetNodeId
+        ? { ...node, execution: { ...node.execution, status: "running" } }
+        : node),
     };
-    expect(toFlowEdges(runningDraft).find((item) => item.id === edge.id).className).toContain("active");
+    const runningEdge = toFlowEdges(runningDraft).find((item) => item.id === edge.id);
+    expect(runningEdge.className).toContain("active");
+    expect(runningEdge.data.active).toBe(true);
   });
 
   it("projects an explicitly selected edge for visible selection and keyboard deletion", () => {

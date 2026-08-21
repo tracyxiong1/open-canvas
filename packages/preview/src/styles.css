@@ -413,6 +413,11 @@ textarea:focus-visible,
 
 .react-flow__edge.canvas-edge.active .react-flow__edge-path { stroke: #c0c8d0; }
 
+.react-flow__edge.canvas-edge.linked .react-flow__edge-path {
+  stroke: #c0c8d0;
+  stroke-width: 2;
+}
+
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.75;
