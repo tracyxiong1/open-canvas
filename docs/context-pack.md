@@ -18,8 +18,9 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 2. The skill chooses the smallest requested atomic operation (for example add,
    update, delete, connect, group, or revise a node), rather than imposing a
    script-to-shots workflow.
-3. The CLI applies that operation to the shared project document and reports
-   the affected project, draft, and node IDs.
+3. The CLI reads a semantic `context` projection before and after an edit when
+   needed, then applies the operation to the shared project document and
+   reports the affected project, draft, and node IDs.
 4. The studio reflects CLI revisions automatically when it has no unsaved
    browser edits; otherwise it preserves those edits and presents an explicit
    choice to load the external revision.
@@ -38,6 +39,9 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 - Conversation-first canvas: expose composable atomic operations to Codex;
   never force a story, script, shot-plan, or variation workflow before the
   user asks for it.
+- Context-safe CLI: `context` exposes selected nodes, nearby relationships,
+  referenced assets, and safe job state to the Skill without exposing local
+  asset paths or credentials.
 - MVP canvas interaction: pan, zoom, direct node movement, project-local group frames, typed node relationships, prompt editing, undo/redo, local JSON import/export, asset preview, generation state, and parameter details.
 - Project-local resources only: characters, scene/style direction, and imported assets are reusable nodes or references inside one project; no global role, material, style, or history library is built.
 - Complex editing may remain prompt-driven in V1.

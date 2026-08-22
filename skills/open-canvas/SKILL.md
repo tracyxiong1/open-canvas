@@ -38,21 +38,27 @@ the user requests one. Translate the current request into the smallest useful
 project mutation, then leave the resulting canvas editable for the next turn.
 
 1. Create a project with `init` only if there is no project. For an existing
-   project, start with `status` and use the active draft and current revisions.
+   project, start with `context --project <dir>`. Use `--node <id> --depth 0..4`
+   when the request concerns one node and its local graph; `status` is only a
+   concise project-wide summary.
 2. Apply only the requested atomic operation. Add editable context through
    `node add --kind composition --role script|character|scene-style|asset-reference`,
    or a generative image/video node through `node add --kind shot --media-kind
-   image|video --prompt ...`. Use `node update`, `node delete`, `edge connect`,
-   and `group create` only when the user asks for their corresponding change.
+   image|video --prompt ...`. Use `node update`, `node delete`, `node move`,
+   `node copy`, `edge connect`, `edge disconnect`, and `group create` only when
+   the user asks for their corresponding change.
 3. Run `script expand --project <dir> --node <script-node-id>` only when the
    user explicitly wants a script turned into shots. It creates editable
    project-local video shots, dependency edges from the script, and sequence
    edges between adjacent shots. `--limit` is 1 through 8.
 4. Create a draft copy only when the user wants to preserve the current draft
    while exploring a variation. Otherwise update the requested node in place.
-5. Inspect `status` after meaningful mutations. Report the project directory,
-   active draft, affected node IDs, and the visible result—without proposing a
-   mandatory next workflow step.
+5. Inspect the affected result with `context` after meaningful mutations.
+   Report the project directory, active draft, affected node IDs, and the
+   visible result—without proposing a mandatory next workflow step. Context
+   output is designed for the Skill: it contains semantic nodes, relationships,
+   safe job state, and referenced asset metadata, but no filesystem paths or
+   credentials.
 
 When a Studio URL is open through `open --no-open`, CLI revisions propagate to
 the clean browser canvas automatically. If the browser has unsaved edits, it

@@ -42,6 +42,9 @@ test("CLI prints machine-readable help without requiring a project", async () =>
   assert.match(longHelp.usage, /^open-canvas /);
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("node add")));
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("node delete")));
+  assert.ok(longHelp.commands.some((command: string) => command.startsWith("context")));
+  assert.ok(longHelp.commands.some((command: string) => command.startsWith("node move")));
+  assert.ok(longHelp.commands.some((command: string) => command.startsWith("edge disconnect")));
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("script expand")));
   assert.match(longHelp.generation.configuredRoutes.join("\n"), /OPENAI_API_KEY/);
   assert.doesNotMatch(long.stdout, /sk-[A-Za-z0-9]/);
@@ -136,6 +139,90 @@ test("local preview bridge reads and saves one project without exposing arbitrar
   } finally {
     await bridge.close();
   }
+});
+
+test("CLI exposes context-first atomic canvas operations without leaking local paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-atomic-"));
+  const projectDir = join(root, "demo");
+  const source = join(root, "reference.png");
+  await writeFile(source, Buffer.from("context-asset\n", "utf8"));
+  await cli(["init", projectDir, "--title", "Atomic canvas"]);
+  const imported = await cli(["asset", "import", "--project", projectDir, "--file", source]);
+  const character = await cli([
+    "node", "add", "--project", projectDir, "--kind", "composition", "--role", "character",
+    "--title", "旅行者设定", "--prompt", "蓝色风衣的独行旅者，跨镜头保持一致。", "--x", "120", "--y", "180",
+  ]);
+  const shot = await cli([
+    "node", "add", "--project", projectDir, "--kind", "shot", "--media-kind", "image",
+    "--title", "雨夜街道", "--prompt", "旅者走过雨后的霓虹街道。", "--input-assets", imported.assetId,
+    "--aspect-ratio", "16:9", "--x", "520", "--y", "180",
+  ]);
+  const connected = await cli([
+    "edge", "connect", "--project", projectDir, "--kind", "dependency",
+    "--source", character.nodeId, "--target", shot.nodeId,
+  ]);
+  const grouped = await cli([
+    "group", "create", "--project", projectDir, "--title", "开场", "--members", `${character.nodeId},${shot.nodeId}`,
+  ]);
+
+  const focused = await cli([
+    "context", "--project", projectDir, "--node", shot.nodeId, "--depth", "0",
+  ]);
+  assert.equal(focused.project.title, "Atomic canvas");
+  assert.deepEqual(focused.focus, { nodeId: shot.nodeId, depth: 0 });
+  assert.equal(focused.draft.nodeCount, 3);
+  const focusedShot = focused.nodes.find((node: any) => node.id === shot.nodeId);
+  assert.equal(focusedShot.prompt, "旅者走过雨后的霓虹街道。");
+  assert.deepEqual(focusedShot.inputAssetIds, [imported.assetId]);
+  assert.deepEqual(focusedShot.upstream, [{
+    edgeId: connected.edgeId,
+    kind: "dependency",
+    nodeId: character.nodeId,
+    title: "旅行者设定",
+    nodeKind: "composition",
+    role: "character",
+  }]);
+  assert.ok(focused.nodes.some((node: any) => node.id === grouped.groupNodeId));
+  assert.deepEqual(focused.assets, [{
+    id: imported.assetId,
+    kind: "image",
+    mediaType: "image/png",
+    byteLength: Buffer.byteLength("context-asset\n"),
+    origin: { kind: "import" },
+  }]);
+  assert.equal(focused.jobs.length, 0);
+  assert.doesNotMatch(JSON.stringify(focused), /"path"|checksumSha256|reference\.png/);
+
+  const moved = await cli([
+    "node", "move", "--project", projectDir, "--node", shot.nodeId, "--x", "760", "--y", "360",
+  ]);
+  assert.deepEqual(moved.position, { x: 760, y: 360 });
+  const copied = await cli(["node", "copy", "--project", projectDir, "--node", shot.nodeId]);
+  assert.equal(copied.sourceNodeId, shot.nodeId);
+  assert.deepEqual(copied.position, { x: 808, y: 408 });
+  const afterCopy = await cli(["context", "--project", projectDir]);
+  const copyNode = afterCopy.nodes.find((node: any) => node.id === copied.nodeId);
+  assert.equal(copyNode.title, "雨夜街道 副本");
+  assert.deepEqual(copyNode.position, { x: 808, y: 408 });
+  assert.deepEqual(copyNode.execution, { status: "dirty", outputAssetIds: [] });
+
+  const disconnected = await cli(["edge", "disconnect", "--project", projectDir, "--edge", connected.edgeId]);
+  assert.equal(disconnected.edgeId, connected.edgeId);
+  const afterDisconnect = await cli(["context", "--project", projectDir, "--node", shot.nodeId, "--depth", "1"]);
+  assert.equal(afterDisconnect.edges.length, 0);
+  assert.deepEqual(
+    afterDisconnect.nodes.find((node: any) => node.id === shot.nodeId).upstream,
+    [],
+  );
+
+  const copyGroup = await cliProcess([
+    "node", "copy", "--project", projectDir, "--node", grouped.groupNodeId,
+  ]);
+  assert.equal(copyGroup.code, 1);
+  assert.match(copyGroup.stderr, /cannot copy a layout group/);
+  const invalidDepth = await cliProcess(["context", "--project", projectDir, "--depth", "1"]);
+  assert.equal(invalidDepth.code, 1);
+  assert.match(invalidDepth.stderr, /--depth requires --node/);
 });
 
 test("CLI creates, connects, generates, inspects, previews, and exports from project.json", async () => {
