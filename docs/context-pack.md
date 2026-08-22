@@ -14,20 +14,30 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 
 ## Core user loop
 
-1. The user describes a video in Codex.
-2. The skill creates or updates a script node, then uses the shared script-expansion mutation to obtain an editable shot graph in a new or selected draft.
-3. The CLI creates nodes and edges in that draft within the shared project document, including the same script-expansion mutation exposed as `script expand`.
-4. The routing layer selects a configured image or video provider unless the prompt overrides the strategy.
-5. Jobs run with user-owned credentials.
-6. The studio shows and edits relationships, layout, prompts, state, parameters, and assets.
-7. A follow-up may copy a draft to create a variation, then updates only the affected subgraph in that draft.
-8. The user exports an explicitly selected draft.
+1. The user asks Codex to create or revise the current canvas in natural language.
+2. The skill chooses the smallest requested atomic operation (for example add,
+   update, delete, connect, group, or revise a node), rather than imposing a
+   script-to-shots workflow.
+3. The CLI applies that operation to the shared project document and reports
+   the affected project, draft, and node IDs.
+4. The studio reflects CLI revisions automatically when it has no unsaved
+   browser edits; otherwise it preserves those edits and presents an explicit
+   choice to load the external revision.
+5. Only when the user explicitly asks to generate does the routing layer select
+   a configured image or video provider and run a job with user-owned
+   credentials.
+6. A user may explicitly ask to expand a script, create a variation draft, or
+   export a selected draft; none of those operations is a prerequisite for
+   ordinary canvas editing.
 
 ## Product rules
 
 - Independent product: no reference-product runtime dependency or branding.
 - BYOK only: secrets remain local and must never enter repository history or server-side task metadata.
 - AI-first routing: choose provider/model automatically, while accepting user prompt constraints.
+- Conversation-first canvas: expose composable atomic operations to Codex;
+  never force a story, script, shot-plan, or variation workflow before the
+  user asks for it.
 - MVP canvas interaction: pan, zoom, direct node movement, project-local group frames, typed node relationships, prompt editing, undo/redo, local JSON import/export, asset preview, generation state, and parameter details.
 - Project-local resources only: characters, scene/style direction, and imported assets are reusable nodes or references inside one project; no global role, material, style, or history library is built.
 - Complex editing may remain prompt-driven in V1.
@@ -35,7 +45,11 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
 
 ## Acceptance scenario
 
-Given the prompt `Create a three-shot science-fiction short`, the system creates a main draft with a three-shot graph, invokes configured generation adapters, and displays outputs and progress. Given the follow-up `Change shot 2 to night`, it copies the main draft into a night variation, updates and regenerates only the affected shot and downstream dependencies in that variation, and leaves the main draft unchanged. The selected draft can then be exported.
+Given `在当前画布增加一个雨夜城市的图片节点`, Codex creates only that
+editable node and Studio shows it without a page reload. Given `把它改成清晨`,
+Codex updates only that node and the canvas reflects the new prompt. If the user
+asks to expand a script, create a variation, generate media, or export, Codex
+performs that explicit operation and leaves unrelated nodes and drafts intact.
 
 ## Development and delivery
 

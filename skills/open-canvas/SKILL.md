@@ -31,30 +31,33 @@ not global libraries.
   project data, prompts, source files, output, or logs. Credentials belong only
   in the user's local environment.
 
-## Creation workflow
+## Conversation-first atomic workflow
 
-1. Turn the request into a short plan: story/script context when useful,
-   character or scene context only when it materially improves consistency,
-   image/video shots, and an output composition when the user needs an ordered
-   result.
-2. Create a project with `init` if no project exists. For an existing project,
-   start with `status` and use its active draft and revisions.
-3. Add nodes through `node add`. Use `--kind composition --role script`,
-   `character`, `scene-style`, or `asset-reference` for editable context; use
-   `--kind shot --media-kind image|video --prompt ...` for generative shots.
-4. When a script should become a shot graph, run `script expand --project
-   <dir> --node <script-node-id>`. It creates editable project-local video
-   shots, a dependency from the script to each shot, and `sequence` edges
-   between adjacent shots. Use `--prompt` only when the script node itself
-   should be updated before the expansion; `--limit` is 1 through 8.
-5. Connect other context or asset nodes to the shots they condition with
-   `edge connect --kind dependency`. Connect selected shots to an output
-   composition with dependency edges. Keep manual `sequence` edges only for
-   shot ordering that differs from the script expansion result.
-6. When a complex graph needs visual organization, create a local frame with
-   `group create`; never group one node or create nested/cross-project groups.
-7. Inspect `status` after meaningful mutations. Report the project directory,
-   active draft, created or changed node IDs, and the next actionable step.
+Do not impose a script, shot plan, variation, or generation workflow before
+the user requests one. Translate the current request into the smallest useful
+project mutation, then leave the resulting canvas editable for the next turn.
+
+1. Create a project with `init` only if there is no project. For an existing
+   project, start with `status` and use the active draft and current revisions.
+2. Apply only the requested atomic operation. Add editable context through
+   `node add --kind composition --role script|character|scene-style|asset-reference`,
+   or a generative image/video node through `node add --kind shot --media-kind
+   image|video --prompt ...`. Use `node update`, `node delete`, `edge connect`,
+   and `group create` only when the user asks for their corresponding change.
+3. Run `script expand --project <dir> --node <script-node-id>` only when the
+   user explicitly wants a script turned into shots. It creates editable
+   project-local video shots, dependency edges from the script, and sequence
+   edges between adjacent shots. `--limit` is 1 through 8.
+4. Create a draft copy only when the user wants to preserve the current draft
+   while exploring a variation. Otherwise update the requested node in place.
+5. Inspect `status` after meaningful mutations. Report the project directory,
+   active draft, affected node IDs, and the visible result—without proposing a
+   mandatory next workflow step.
+
+When a Studio URL is open through `open --no-open`, CLI revisions propagate to
+the clean browser canvas automatically. If the browser has unsaved edits, it
+will preserve them and show an explicit **加载更新** action instead of
+overwriting them.
 
 Use meaningful titles and concise prompts. Preserve explicit user constraints
 such as aspect ratio, image candidate count, duration, audio, provider, or model. When those

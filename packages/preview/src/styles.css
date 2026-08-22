@@ -2833,6 +2833,31 @@ textarea:focus-visible,
 .toast.success svg { color: var(--success); }
 .toast.danger svg { color: var(--danger); }
 
+.toast.external-update {
+  z-index: calc(var(--z-toast) + 1);
+  max-width: min(560px, calc(100vw - 40px));
+  color: #f1e6cc;
+  background: #332d22;
+  border-color: #735b30;
+}
+
+.toast.external-update svg { flex: 0 0 auto; color: #e3ad49; }
+
+.toast.external-update button {
+  flex: 0 0 auto;
+  min-height: 24px;
+  margin: 0 -5px 0 2px;
+  padding: 0 8px;
+  color: #251d11;
+  background: #e3ad49;
+  border: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.toast.external-update button:hover { background: #f2c466; }
+
 .asset-dialog {
   position: fixed;
   inset: 0;

@@ -115,7 +115,16 @@ export async function startPreviewBridge(options: PreviewBridgeOptions): Promise
 
     try {
       if (request.method === "GET" && requestUrl.pathname === "/project.json") {
-        sendJson(response, 200, await loadProject(options.projectDirectory));
+        const document = await loadProject(options.projectDirectory);
+        // Studio polls this local bridge with the last durable project
+        // revision. A 204 keeps ordinary polling cheap while still making
+        // every externally-applied CLI mutation observable without a page
+        // reload. The document itself remains the only source of truth.
+        if (requestUrl.searchParams.get("revision") === String(document.revision)) {
+          sendEmpty(response);
+          return;
+        }
+        sendJson(response, 200, document);
         return;
       }
 

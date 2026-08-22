@@ -89,7 +89,11 @@ test("local preview bridge reads and saves one project without exposing arbitrar
   try {
     const loaded = await fetch(projectUrl);
     assert.equal(loaded.status, 200);
-    assert.equal((await loaded.json()).project.title, "Bridge project");
+    const loadedDocument = await loaded.json();
+    assert.equal(loadedDocument.project.title, "Bridge project");
+
+    const unchanged = await fetch(`${projectUrl}&revision=${loadedDocument.revision}`);
+    assert.equal(unchanged.status, 204);
 
     const changed = addNode(initial, {
       draftId: initial.activeDraftId,
@@ -111,6 +115,12 @@ test("local preview bridge reads and saves one project without exposing arbitrar
     assert.equal(saved.status, 200);
     assert.equal((await saved.json()).revision, changed.revision);
     assert.equal((await loadProject(projectDir)).drafts[0]!.nodes[0]!.title, "本地镜头");
+
+    const changedSinceInitial = await fetch(`${projectUrl}&revision=${loadedDocument.revision}`);
+    assert.equal(changedSinceInitial.status, 200);
+    assert.equal((await changedSinceInitial.json()).revision, changed.revision);
+    const unchangedAgain = await fetch(`${projectUrl}&revision=${changed.revision}`);
+    assert.equal(unchangedAgain.status, 204);
 
     const stale = await fetch(projectUrl, {
       method: "PUT",
