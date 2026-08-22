@@ -507,6 +507,108 @@ describe("editable open canvas", () => {
     }
   });
 
+  it("applies a newer CLI revision to a clean Studio without reloading the page", async () => {
+    let remoteDocument = structuredClone(exampleDocument);
+    remoteDocument.project.title = "Bridge sync studio";
+    remoteDocument.revision = 12;
+    const projectUrl = "http://127.0.0.1:45678/project.json?token=sync-token";
+    const assetUrl = "http://127.0.0.1:45678/asset?token=sync-token";
+    const fetchMock = vi.fn(async (url) => {
+      const requestedRevision = new URL(url).searchParams.get("revision");
+      if (requestedRevision === String(remoteDocument.revision)) {
+        return { ok: true, status: 204, json: async () => null };
+      }
+      return { ok: true, status: 200, json: async () => structuredClone(remoteDocument) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<App projectUrl={projectUrl} assetUrl={assetUrl} initialDraftId={remoteDocument.drafts[0].id} />);
+      const existingNode = await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ });
+      fireEvent.click(existingNode);
+      expect(existingNode).toHaveAttribute("aria-pressed", "true");
+
+      const draft = remoteDocument.drafts[0];
+      remoteDocument = addNode(remoteDocument, {
+        draftId: draft.id,
+        title: "Codex 新镜头",
+        spec: {
+          kind: "shot",
+          prompt: "从命令行新增并自动同步到画布。",
+          mediaKind: "image",
+          inputAssetIds: [],
+        },
+        position: { x: 1800, y: 260 },
+        expectedProjectRevision: remoteDocument.revision,
+        expectedDraftRevision: draft.revision,
+      });
+
+      await waitFor(
+        () => expect(screen.getByRole("button", { name: /Codex 新镜头，待生成/ })).toBeInTheDocument(),
+        { timeout: 2_500 },
+      );
+      expect(screen.getByRole("button", { name: /Shot 1 — Arrival，已完成/ })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("Codex 已更新画布")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps unsaved Studio edits when a newer CLI revision arrives", async () => {
+    const user = userEvent.setup();
+    let remoteDocument = structuredClone(exampleDocument);
+    remoteDocument.project.title = "Bridge conflict studio";
+    remoteDocument.revision = 12;
+    const projectUrl = "http://127.0.0.1:45678/project.json?token=conflict-token";
+    const assetUrl = "http://127.0.0.1:45678/asset?token=conflict-token";
+    const fetchMock = vi.fn(async (url) => {
+      const requestedRevision = new URL(url).searchParams.get("revision");
+      if (requestedRevision === String(remoteDocument.revision)) {
+        return { ok: true, status: 204, json: async () => null };
+      }
+      return { ok: true, status: 200, json: async () => structuredClone(remoteDocument) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      render(<App projectUrl={projectUrl} assetUrl={assetUrl} initialDraftId={remoteDocument.drafts[0].id} />);
+      const existingNode = await screen.findByRole("button", { name: /Shot 1 — Arrival，已完成/ });
+      fireEvent.click(existingNode);
+      const prompt = screen.getByRole("textbox", { name: "Prompt" });
+      await user.clear(prompt);
+      await user.type(prompt, "Studio 中尚未保存的本地修改。");
+      await user.click(screen.getByRole("button", { name: "应用提示词" }));
+      expect(screen.getByText("未保存")).toBeInTheDocument();
+
+      const draft = remoteDocument.drafts[0];
+      remoteDocument = addNode(remoteDocument, {
+        draftId: draft.id,
+        title: "CLI 的并行更新",
+        spec: {
+          kind: "shot",
+          prompt: "这份外部更新不应覆盖浏览器的编辑。",
+          mediaKind: "image",
+          inputAssetIds: [],
+        },
+        position: { x: 1800, y: 260 },
+        expectedProjectRevision: remoteDocument.revision,
+        expectedDraftRevision: draft.revision,
+      });
+
+      const conflict = await screen.findByRole("alert", {}, { timeout: 2_500 });
+      expect(conflict).toHaveTextContent("当前未保存编辑仍被保留");
+      expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("Studio 中尚未保存的本地修改。");
+      expect(screen.queryByRole("button", { name: /CLI 的并行更新，待生成/ })).not.toBeInTheDocument();
+
+      await user.click(within(conflict).getByRole("button", { name: "加载更新" }));
+      expect(await screen.findByRole("button", { name: /CLI 的并行更新，待生成/ })).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByText("已保存")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("deletes a selected node through the canvas keyboard and restores it with undo", async () => {
     const user = userEvent.setup();
     render(<App initialDocument={exampleDocument} />);

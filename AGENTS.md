@@ -12,6 +12,9 @@
 ## Shared behavior
 
 - Treat the project/canvas document as the single source of truth for the CLI, skill, and studio.
+- Keep creation conversation-first and atomic: Codex composes only the requested
+  canvas operations through the Skill and CLI. Do not impose a script-to-shots
+  workflow, and keep MCP out of this local MVP.
 - Keep implementation minimal and trace every change to an MVP acceptance criterion.
 - Keep product-owned desktop and compact visual QA baselines under `docs/qa/`.
 - Do not invent visual styles or copy protected source assets. Use approved source evidence and open-source icons/assets.

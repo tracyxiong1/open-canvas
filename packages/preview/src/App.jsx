@@ -33,6 +33,7 @@ import { createPreviewModel, truncateIdentifier } from "./project-document.js";
 import { findOpenNodePosition } from "./react-flow-model.js";
 
 const HISTORY_LIMIT = 50;
+const BRIDGE_SYNC_INTERVAL_MS = 1_000;
 
 const CONTEXT_NODE_PRESETS = Object.freeze({
   text: {
@@ -108,6 +109,12 @@ function projectFileName(title) {
 
 function serializeProject(document) {
   return `${JSON.stringify(document, null, 2)}\n`;
+}
+
+function projectUrlAtRevision(projectUrl, revision) {
+  const url = new URL(projectUrl);
+  url.searchParams.set("revision", String(revision));
+  return url.toString();
 }
 
 function sameNodeIdSet(left, right) {
@@ -233,8 +240,11 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   const [activeAssetUrl, setActiveAssetUrl] = useState(() => localAssetUrl(assetUrl));
   const [bridgeLoading, setBridgeLoading] = useState(() => Boolean(localProjectUrl(projectUrl)));
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingExternalDocument, setPendingExternalDocument] = useState(null);
   const savedProjectRevisionRef = useRef(null);
   const documentRef = useRef(document);
+  const savedSnapshotRef = useRef(savedSnapshot);
+  const isDirtyRef = useRef(false);
 
   const resolveAssetUrl = useMemo(() => activeAssetUrl
     ? (asset) => resolveBridgeAssetUrl(asset, activeAssetUrl)
@@ -248,12 +258,42 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   }, [document]);
 
   useEffect(() => {
+    savedSnapshotRef.current = savedSnapshot;
+    isDirtyRef.current = isDirty;
+  }, [isDirty, savedSnapshot]);
+
+  const applyBridgeDocument = useCallback((nextDocument, { message = null, resetSelection = false } = {}) => {
+    const nextSnapshot = serializeProject(nextDocument);
+    documentRef.current = nextDocument;
+    savedSnapshotRef.current = nextSnapshot;
+    isDirtyRef.current = false;
+    setDocument(nextDocument);
+    setDraftId((currentDraftId) => requestedDraftId(
+      nextDocument,
+      resetSelection ? initialDraftId : currentDraftId ?? initialDraftId,
+    ));
+    if (resetSelection) {
+      setSelectedNodeId(null);
+      setSelectedNodeIds([]);
+    }
+    setNodeClipboard(null);
+    setPreview(null);
+    setUndoStack([]);
+    setRedoStack([]);
+    setSavedSnapshot(nextSnapshot);
+    savedProjectRevisionRef.current = nextDocument.revision;
+    setPendingExternalDocument(null);
+    if (message) setNotice({ tone: "success", message });
+  }, [initialDraftId]);
+
+  useEffect(() => {
     if (!activeProjectUrl) {
       setBridgeLoading(false);
       return undefined;
     }
     const controller = new AbortController();
     setBridgeLoading(true);
+    setPendingExternalDocument(null);
     void fetch(activeProjectUrl, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`无法读取本地项目（${response.status}）`);
@@ -261,15 +301,7 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       })
       .then((nextDocument) => {
         if (controller.signal.aborted) return;
-        setDocument(nextDocument);
-        setDraftId(requestedDraftId(nextDocument, initialDraftId));
-        setSelectedNodeId(null);
-        setSelectedNodeIds([]);
-        setNodeClipboard(null);
-        setUndoStack([]);
-        setRedoStack([]);
-        setSavedSnapshot(serializeProject(nextDocument));
-        savedProjectRevisionRef.current = nextDocument.revision;
+        applyBridgeDocument(nextDocument, { resetSelection: true });
         setBridgeLoading(false);
       })
       .catch((error) => {
@@ -280,7 +312,51 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         setNotice({ tone: "danger", message: error instanceof Error ? error.message : "无法读取本地项目" });
       });
     return () => controller.abort();
-  }, [activeProjectUrl, initialDraftId]);
+  }, [activeProjectUrl, applyBridgeDocument]);
+
+  useEffect(() => {
+    if (!activeProjectUrl || bridgeLoading) return undefined;
+    let cancelled = false;
+    let controller = null;
+    let timeout = null;
+
+    const scheduleNextPoll = () => {
+      if (!cancelled) timeout = window.setTimeout(poll, BRIDGE_SYNC_INTERVAL_MS);
+    };
+
+    const poll = async () => {
+      const knownRevision = savedProjectRevisionRef.current;
+      if (knownRevision === null) {
+        scheduleNextPoll();
+        return;
+      }
+      controller = new AbortController();
+      try {
+        const response = await fetch(projectUrlAtRevision(activeProjectUrl, knownRevision), { signal: controller.signal });
+        if (cancelled || controller.signal.aborted || response.status === 204) return;
+        if (!response.ok) throw new Error(`无法同步本地项目（${response.status}）`);
+        const nextDocument = parseCanvasDocument(await response.json());
+        if (cancelled || controller.signal.aborted || nextDocument.revision <= savedProjectRevisionRef.current) return;
+        if (isDirtyRef.current) {
+          setPendingExternalDocument((current) => current && current.revision >= nextDocument.revision ? current : nextDocument);
+          return;
+        }
+        applyBridgeDocument(nextDocument, { message: "Codex 已更新画布" });
+      } catch {
+        // The local bridge can be restarted independently of Studio. Keep the
+        // editor usable and retry quietly instead of dropping browser edits.
+      } finally {
+        scheduleNextPoll();
+      }
+    };
+
+    timeout = window.setTimeout(poll, BRIDGE_SYNC_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      if (timeout !== null) window.clearTimeout(timeout);
+      controller?.abort();
+    };
+  }, [activeProjectUrl, applyBridgeDocument, bridgeLoading]);
 
   useEffect(() => {
     const availableNodeIds = new Set(model.activeDraft.nodes
@@ -303,6 +379,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   const commitDocument = useCallback((nextDocument, message) => {
     setUndoStack((items) => [...items.slice(-(HISTORY_LIMIT - 1)), document]);
     setRedoStack([]);
+    documentRef.current = nextDocument;
+    isDirtyRef.current = serializeProject(nextDocument) !== savedSnapshotRef.current;
     setDocument(nextDocument);
     setNotice({ tone: "success", message });
   }, [document]);
@@ -331,10 +409,14 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       setNodeClipboard(null);
       setUndoStack([]);
       setRedoStack([]);
-      setSavedSnapshot(serializeProject(nextDocument));
+      const nextSnapshot = serializeProject(nextDocument);
+      savedSnapshotRef.current = nextSnapshot;
+      isDirtyRef.current = false;
+      setSavedSnapshot(nextSnapshot);
       savedProjectRevisionRef.current = null;
       setActiveProjectUrl(null);
       setActiveAssetUrl(null);
+      setPendingExternalDocument(null);
       setNotice({ tone: "success", message: `已打开 ${nextModel.project.title}` });
     } catch (error) {
       setNotice({ tone: "danger", message: error instanceof Error ? error.message : "无法读取项目文档" });
@@ -374,6 +456,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       }
       savedProjectRevisionRef.current = typeof payload?.revision === "number" ? payload.revision : snapshot.revision;
       if (documentRef.current.revision === snapshot.revision) {
+        savedSnapshotRef.current = snapshotText;
+        isDirtyRef.current = false;
         setSavedSnapshot(snapshotText);
         setNotice({ tone: "success", message: "已保存到本地项目" });
       } else {
@@ -391,6 +475,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
     if (!previous) return;
     setUndoStack((items) => items.slice(0, -1));
     setRedoStack((items) => [document, ...items].slice(0, HISTORY_LIMIT));
+    documentRef.current = previous;
+    isDirtyRef.current = serializeProject(previous) !== savedSnapshotRef.current;
     setDocument(previous);
     setNotice({ tone: "success", message: "已撤销" });
   }, [document, undoStack]);
@@ -400,6 +486,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
     if (!next) return;
     setRedoStack((items) => items.slice(1));
     setUndoStack((items) => [...items.slice(-(HISTORY_LIMIT - 1)), document]);
+    documentRef.current = next;
+    isDirtyRef.current = serializeProject(next) !== savedSnapshotRef.current;
     setDocument(next);
     setNotice({ tone: "success", message: "已重做" });
   }, [document, redoStack]);
@@ -795,6 +883,11 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
     });
   }, [draftId, handleSelectNodes, runMutation]);
 
+  const handleLoadExternalUpdate = useCallback(() => {
+    if (!pendingExternalDocument) return;
+    applyBridgeDocument(pendingExternalDocument, { message: "已加载 Codex 的画布更新" });
+  }, [applyBridgeDocument, pendingExternalDocument]);
+
   const handleOpenPreview = useCallback((node, asset) => {
     if (asset.previewUrl) setPreview({ node, asset });
   }, []);
@@ -842,6 +935,14 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         onUndo={handleUndo}
         onRedo={handleRedo}
       />
+
+      {pendingExternalDocument ? (
+        <div className="toast external-update" role="alert">
+          <WarningCircle weight="fill" aria-hidden="true" />
+          <span>Codex 已更新画布；当前未保存编辑仍被保留。</span>
+          <button type="button" onClick={handleLoadExternalUpdate}>加载更新</button>
+        </div>
+      ) : null}
 
       {notice ? (
         <div className={`toast ${notice.tone}`} role="status">
