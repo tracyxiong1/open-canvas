@@ -22,6 +22,7 @@ The machine-readable v1 contract is
 | MVP requirement | Architecture decision |
 | --- | --- |
 | One model for CLI, skill, and studio | A versioned `project.json` contains project metadata, drafts, graph/job state, and shared asset metadata. |
+| Conversation-first inspection | The CLI `context` projection gives the Skill semantic nodes, local relationships, referenced assets, and safe job state without requiring direct JSON reads or exposing local asset paths. |
 | Draft-based creation | A project has one or more switchable drafts; each draft owns an independent canvas and may record the draft it was copied from. |
 | Three-shot graph | Within a draft, `shot` nodes are ordered with `sequence` edges and feed a `composition` through `dependency` edges. |
 | Script-to-shot graph | The shared `expandScriptIntoShots` mutation creates editable local video shots, script dependencies, and adjacent sequence edges in one revision-checked draft mutation. |

@@ -17,10 +17,13 @@ import {
   createGroup,
   createProject,
   deleteNode,
+  disconnectEdge,
   expandScriptIntoShots,
   failGeneration,
   loadProject,
   MAX_SCRIPT_SHOTS,
+  moveNodes,
+  isLayoutGroup,
   resumeGeneration,
   registerImportedAsset,
   saveProjectAtomic,
@@ -32,6 +35,7 @@ import {
   type CompositionSpec,
   type Draft,
   type GenerationRequest,
+  type LayoutGroupNode,
   type Node,
   type ProviderAdapter,
   type ProviderExecutionContext,
@@ -244,6 +248,13 @@ function optionalNumber(args: ParsedArgs, name: string): number | undefined {
   return parsed;
 }
 
+function requiredFiniteNumber(args: ParsedArgs, name: string): number {
+  const value = requiredFlag(args, name);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new CliUsageError(`Invalid number for --${name}`);
+  return parsed;
+}
+
 function inferredMediaType(filePath: string): string | undefined {
   const extension = extname(filePath).toLowerCase();
   return {
@@ -297,11 +308,15 @@ function helpCommand() {
     commands: [
       "init <directory> --title <title>",
       "status --project <directory> [--draft <id>]",
+      "context --project <directory> [--draft <id>] [--node <id> --depth 0..4]",
       "node add --project <directory> --kind shot|composition --title <title> ... [--count 1|2|4 for image]",
       "node update --project <directory> --node <id> ...",
       "node delete --project <directory> --node <id>",
+      "node move --project <directory> --node <id> --x <number> --y <number>",
+      "node copy --project <directory> --node <id> [--title <title>] [--x <number> --y <number>]",
       "group create --project <directory> --members <node-id,node-id,...> [--title <title>]",
       "edge connect --project <directory> --source <id> --target <id> --kind dependency|sequence",
+      "edge disconnect --project <directory> --edge <id>",
       "script expand --project <directory> --node <script-node-id> [--limit 1..8] [--prompt <script>]",
       "asset import --project <directory> --file <path>",
       "draft copy --project <directory> --title <title> [--source <id>]",
@@ -312,6 +327,7 @@ function helpCommand() {
     localContext: [
       "Use composition roles text, script, character, scene-style, or asset-reference for project-local context.",
       "Use group create to persist a project-local layout frame around two or more canvas nodes; it never creates a global library.",
+      "Use context before an existing-project edit to obtain semantic nodes, local graph relationships, assets, and safe job state without reading project.json directly.",
       "Use script expand to turn one project-local script node into editable video shots plus explicit dependency and sequence edges.",
       "Import media with asset import, then associate it with a node; no global role or material library is created.",
       "open starts a loopback bridge for the selected local project; Studio saves explicitly through revision-checked CLI persistence.",
@@ -448,17 +464,21 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
   if (command === "node" && subcommand === "add") return addNodeCommand(args);
   if (command === "node" && subcommand === "update") return updateNodeCommand(args);
   if (command === "node" && subcommand === "delete") return deleteNodeCommand(args);
+  if (command === "node" && subcommand === "move") return moveNodeCommand(args);
+  if (command === "node" && subcommand === "copy") return copyNodeCommand(args);
   if (command === "group" && subcommand === "create") return createGroupCommand(args);
   if (command === "edge" && subcommand === "connect") return connectCommand(args);
+  if (command === "edge" && subcommand === "disconnect") return disconnectCommand(args);
   if (command === "script" && subcommand === "expand") return expandScriptCommand(args);
   if (command === "asset" && subcommand === "import") return importAssetCommand(args);
   if (command === "draft" && subcommand === "copy") return copyDraftCommand(args);
   if (command === "generate") return generateCommand(args);
   if (command === "status") return statusCommand(args);
+  if (command === "context") return contextCommand(args);
   if (command === "preview-bridge") return previewBridgeCommand(args);
   if (command === "preview" || command === "open") return previewCommand(args);
   if (command === "export") return exportCommand(args);
-  throw new CliUsageError("Unknown command. Use init, node add/update/delete, group create, edge connect, script expand, asset import, draft copy, generate, status, open/preview, or export.");
+  throw new CliUsageError("Unknown command. Use init, context, node add/update/delete/move/copy, group create, edge connect/disconnect, script expand, asset import, draft copy, generate, status, open/preview, or export.");
 }
 
 async function initCommand(args: ParsedArgs): Promise<unknown> {
@@ -587,6 +607,87 @@ async function deleteNodeCommand(args: ParsedArgs): Promise<unknown> {
   };
 }
 
+function isLayoutGroupNode(node: Node): node is LayoutGroupNode {
+  return isLayoutGroup(node);
+}
+
+function copiedNodeTitle(draft: Draft, sourceTitle: string): string {
+  const base = `${sourceTitle} 副本`;
+  if (!draft.nodes.some((node) => node.title === base)) return base;
+  let suffix = 2;
+  while (draft.nodes.some((node) => node.title === `${base} ${suffix}`)) suffix += 1;
+  return `${base} ${suffix}`;
+}
+
+function copiedNodePosition(args: ParsedArgs, source: Node): { x: number; y: number } {
+  const x = optionalNumber(args, "x");
+  const y = optionalNumber(args, "y");
+  if ((x === undefined) !== (y === undefined)) {
+    throw new CliUsageError("node copy requires both --x and --y when positioning a copy");
+  }
+  return x === undefined || y === undefined
+    ? { x: source.position.x + 48, y: source.position.y + 48 }
+    : { x, y };
+}
+
+async function moveNodeCommand(args: ParsedArgs): Promise<unknown> {
+  const projectDirectory = resolve(requiredFlag(args, "project"));
+  const before = await loadProject(projectDirectory);
+  const draft = draftFor(before, optionalFlag(args, "draft"));
+  const nodeId = requiredFlag(args, "node");
+  const node = draft.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) throw new CliUsageError(`Unknown node: ${nodeId}`);
+  if (isLayoutGroupNode(node)) {
+    throw new CliUsageError("node move cannot move a layout group; move its member nodes through this CLI or use Studio");
+  }
+  const position = { x: requiredFiniteNumber(args, "x"), y: requiredFiniteNumber(args, "y") };
+  const after = moveNodes(before, {
+    draftId: draft.id,
+    updates: [{ nodeId, position }],
+    expectedProjectRevision: numberFlag(args, "expected-project-revision", before.revision),
+    expectedDraftRevision: numberFlag(args, "expected-draft-revision", draft.revision),
+  });
+  await saveMutation(projectDirectory, before, after);
+  return {
+    draftId: draft.id,
+    nodeId,
+    position,
+    revision: after.revision,
+    draftRevision: draftFor(after, draft.id).revision,
+  };
+}
+
+async function copyNodeCommand(args: ParsedArgs): Promise<unknown> {
+  const projectDirectory = resolve(requiredFlag(args, "project"));
+  const before = await loadProject(projectDirectory);
+  const draft = draftFor(before, optionalFlag(args, "draft"));
+  const sourceNodeId = requiredFlag(args, "node");
+  const source = draft.nodes.find((candidate) => candidate.id === sourceNodeId);
+  if (!source) throw new CliUsageError(`Unknown node: ${sourceNodeId}`);
+  if (isLayoutGroupNode(source)) {
+    throw new CliUsageError("node copy cannot copy a layout group; groups are local frames around existing nodes");
+  }
+  const after = addNode(before, {
+    draftId: draft.id,
+    expectedProjectRevision: numberFlag(args, "expected-project-revision", before.revision),
+    expectedDraftRevision: numberFlag(args, "expected-draft-revision", draft.revision),
+    title: optionalFlag(args, "title") ?? copiedNodeTitle(draft, source.title),
+    position: copiedNodePosition(args, source),
+    spec: structuredClone(source.spec),
+  });
+  const copied = draftFor(after, draft.id).nodes.at(-1);
+  if (!copied) throw new Error("Unable to copy node");
+  await saveMutation(projectDirectory, before, after);
+  return {
+    draftId: draft.id,
+    sourceNodeId,
+    nodeId: copied.id,
+    position: copied.position,
+    revision: after.revision,
+    draftRevision: draftFor(after, draft.id).revision,
+  };
+}
+
 async function connectCommand(args: ParsedArgs): Promise<unknown> {
   const projectDirectory = resolve(requiredFlag(args, "project"));
   const before = await loadProject(projectDirectory);
@@ -603,6 +704,29 @@ async function connectCommand(args: ParsedArgs): Promise<unknown> {
   });
   await saveMutation(projectDirectory, before, after);
   return { draftId: draft.id, edgeId: draftFor(after, draft.id).edges.at(-1)!.id, revision: after.revision };
+}
+
+async function disconnectCommand(args: ParsedArgs): Promise<unknown> {
+  const projectDirectory = resolve(requiredFlag(args, "project"));
+  const before = await loadProject(projectDirectory);
+  const draft = draftFor(before, optionalFlag(args, "draft"));
+  const edgeId = requiredFlag(args, "edge");
+  if (!draft.edges.some((edge) => edge.id === edgeId)) {
+    throw new CliUsageError(`Unknown edge: ${edgeId}`);
+  }
+  const after = disconnectEdge(before, {
+    draftId: draft.id,
+    edgeId,
+    expectedProjectRevision: numberFlag(args, "expected-project-revision", before.revision),
+    expectedDraftRevision: numberFlag(args, "expected-draft-revision", draft.revision),
+  });
+  await saveMutation(projectDirectory, before, after);
+  return {
+    draftId: draft.id,
+    edgeId,
+    revision: after.revision,
+    draftRevision: draftFor(after, draft.id).revision,
+  };
 }
 
 function scriptShotLimit(args: ParsedArgs): number | undefined {
@@ -835,6 +959,204 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
     }
     throw new Error(failure.message);
   }
+}
+
+function contextDepth(args: ParsedArgs): number {
+  const depth = optionalNumber(args, "depth") ?? 1;
+  if (!Number.isSafeInteger(depth) || depth < 0 || depth > 4) {
+    throw new CliUsageError("--depth must be an integer from 0 to 4");
+  }
+  return depth;
+}
+
+function relatedNodeSummary(node: Node): Record<string, unknown> {
+  return {
+    nodeId: node.id,
+    title: node.title,
+    nodeKind: node.spec.kind,
+    ...(node.spec.kind === "composition" ? { role: node.spec.role ?? "composition" } : {}),
+  };
+}
+
+function contextNodeConnections(draft: Draft, node: Node, direction: "upstream" | "downstream"): Array<Record<string, unknown>> {
+  const edges = draft.edges.filter((edge) => direction === "upstream"
+    ? edge.targetNodeId === node.id
+    : edge.sourceNodeId === node.id);
+  return edges.map((edge) => {
+    const relatedNodeId = direction === "upstream" ? edge.sourceNodeId : edge.targetNodeId;
+    const relatedNode = draft.nodes.find((candidate) => candidate.id === relatedNodeId);
+    if (!relatedNode) throw new Error(`Context edge references an unknown node: ${edge.id}`);
+    return { edgeId: edge.id, kind: edge.kind, ...relatedNodeSummary(relatedNode) };
+  });
+}
+
+function semanticContextNode(draft: Draft, node: Node): Record<string, unknown> {
+  const base = {
+    id: node.id,
+    title: node.title,
+    position: { ...node.position },
+    kind: node.spec.kind,
+    execution: {
+      status: node.execution.status,
+      ...(node.execution.activeJobId === undefined ? {} : { activeJobId: node.execution.activeJobId }),
+      outputAssetIds: [...node.execution.outputAssetIds],
+    },
+    upstream: contextNodeConnections(draft, node, "upstream"),
+    downstream: contextNodeConnections(draft, node, "downstream"),
+  };
+  if (node.spec.kind === "shot") {
+    return {
+      ...base,
+      mediaKind: node.spec.mediaKind,
+      prompt: node.spec.prompt,
+      inputAssetIds: [...node.spec.inputAssetIds],
+      ...(node.spec.requirements === undefined ? {} : { requirements: structuredClone(node.spec.requirements) }),
+      ...(node.spec.routing === undefined ? {} : { routing: structuredClone(node.spec.routing) }),
+    };
+  }
+  return {
+    ...base,
+    role: node.spec.role ?? "composition",
+    ...(node.spec.prompt === undefined ? {} : { prompt: node.spec.prompt }),
+    ...(node.spec.referenceAssetIds === undefined ? {} : { referenceAssetIds: [...node.spec.referenceAssetIds] }),
+    ...(isLayoutGroupNode(node) ? { memberNodeIds: [...(node.spec.memberNodeIds ?? [])] } : {}),
+  };
+}
+
+function contextNodeIds(draft: Draft, focusNodeId: string | undefined, depth: number): Set<string> {
+  if (focusNodeId === undefined) return new Set(draft.nodes.map((node) => node.id));
+  const focusNode = draft.nodes.find((node) => node.id === focusNodeId);
+  if (!focusNode) throw new CliUsageError(`Unknown node: ${focusNodeId}`);
+
+  const selectedNodeIds = new Set<string>([focusNode.id]);
+  let frontier = [focusNode.id];
+  if (isLayoutGroupNode(focusNode)) {
+    for (const memberNodeId of focusNode.spec.memberNodeIds ?? []) {
+      selectedNodeIds.add(memberNodeId);
+      frontier.push(memberNodeId);
+    }
+  }
+
+  for (let hop = 0; hop < depth; hop += 1) {
+    const frontierIds = new Set(frontier);
+    const nextFrontier: string[] = [];
+    for (const edge of draft.edges) {
+      const adjacentNodeId = frontierIds.has(edge.sourceNodeId)
+        ? edge.targetNodeId
+        : frontierIds.has(edge.targetNodeId)
+          ? edge.sourceNodeId
+          : undefined;
+      if (adjacentNodeId === undefined || selectedNodeIds.has(adjacentNodeId)) continue;
+      selectedNodeIds.add(adjacentNodeId);
+      nextFrontier.push(adjacentNodeId);
+    }
+    frontier = nextFrontier;
+    if (frontier.length === 0) break;
+  }
+
+  // Layout frames are part of a node's visible context even though graph edges
+  // never connect to them. Include the complete local group when any member is
+  // selected so Codex can reason about the same frame Studio will render.
+  let addedMembership = true;
+  while (addedMembership) {
+    addedMembership = false;
+    for (const group of draft.nodes.filter(isLayoutGroupNode)) {
+      const members = group.spec.memberNodeIds ?? [];
+      if (!selectedNodeIds.has(group.id) && !members.some((memberNodeId) => selectedNodeIds.has(memberNodeId))) continue;
+      if (!selectedNodeIds.has(group.id)) {
+        selectedNodeIds.add(group.id);
+        addedMembership = true;
+      }
+      for (const memberNodeId of members) {
+        if (!selectedNodeIds.has(memberNodeId)) {
+          selectedNodeIds.add(memberNodeId);
+          addedMembership = true;
+        }
+      }
+    }
+  }
+  return selectedNodeIds;
+}
+
+function contextAssetIds(draft: Draft, selectedNodeIds: Set<string>): Set<string> {
+  const assetIds = new Set<string>();
+  for (const node of draft.nodes) {
+    if (!selectedNodeIds.has(node.id)) continue;
+    for (const assetId of node.execution.outputAssetIds) assetIds.add(assetId);
+    if (node.spec.kind === "shot") {
+      for (const assetId of node.spec.inputAssetIds) assetIds.add(assetId);
+    } else {
+      for (const assetId of node.spec.referenceAssetIds ?? []) assetIds.add(assetId);
+    }
+  }
+  for (const job of draft.jobs) {
+    if (!selectedNodeIds.has(job.nodeId)) continue;
+    for (const assetId of job.outputAssetIds) assetIds.add(assetId);
+  }
+  return assetIds;
+}
+
+async function contextCommand(args: ParsedArgs): Promise<unknown> {
+  const projectDirectory = resolve(requiredFlag(args, "project"));
+  const document = await loadProject(projectDirectory);
+  const draft = draftFor(document, optionalFlag(args, "draft"));
+  const focusNodeId = optionalFlag(args, "node");
+  if (focusNodeId === undefined && args.flags.has("depth")) {
+    throw new CliUsageError("--depth requires --node");
+  }
+  const depth = focusNodeId === undefined ? 0 : contextDepth(args);
+  const selectedNodeIds = contextNodeIds(draft, focusNodeId, depth);
+  const assetIds = contextAssetIds(draft, selectedNodeIds);
+  return {
+    project: {
+      id: document.project.id,
+      title: document.project.title,
+      revision: document.revision,
+      activeDraftId: document.activeDraftId,
+    },
+    draft: {
+      id: draft.id,
+      title: draft.title,
+      revision: draft.revision,
+      ...(draft.sourceDraftId === undefined ? {} : { sourceDraftId: draft.sourceDraftId }),
+      nodeCount: draft.nodes.length,
+      edgeCount: draft.edges.length,
+      jobCount: draft.jobs.length,
+    },
+    ...(focusNodeId === undefined ? {} : { focus: { nodeId: focusNodeId, depth } }),
+    nodes: draft.nodes
+      .filter((node) => selectedNodeIds.has(node.id))
+      .map((node) => semanticContextNode(draft, node)),
+    edges: draft.edges
+      .filter((edge) => selectedNodeIds.has(edge.sourceNodeId) && selectedNodeIds.has(edge.targetNodeId))
+      .map((edge) => ({
+        id: edge.id,
+        kind: edge.kind,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+      })),
+    assets: document.assets
+      .filter((asset) => assetIds.has(asset.id))
+      .map((asset) => ({
+        id: asset.id,
+        kind: asset.kind,
+        mediaType: asset.mediaType,
+        byteLength: asset.byteLength,
+        origin: structuredClone(asset.origin),
+      })),
+    jobs: draft.jobs
+      .filter((job) => selectedNodeIds.has(job.nodeId))
+      .map((job) => ({
+        id: job.id,
+        nodeId: job.nodeId,
+        attempt: job.attempt,
+        status: job.status,
+        ...(job.progress === undefined ? {} : { progress: job.progress }),
+        route: structuredClone(job.route),
+        outputAssetIds: [...job.outputAssetIds],
+        ...(job.error === undefined ? {} : { error: structuredClone(job.error) }),
+      })),
+  };
 }
 
 async function statusCommand(args: ParsedArgs): Promise<unknown> {
