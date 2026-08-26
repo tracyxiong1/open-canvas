@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  DEFAULT_ARK_SEEDANCE_MODEL,
+  DEFAULT_ARK_SEEDREAM_MODEL,
   GeminiOmniVideoAdapter,
   OpenAIImageAdapter,
   ProviderRoutingError,
+  VolcengineArkAdapter,
   createProviderCredential,
   selectProviderRoute,
   type GenerationRequest,
@@ -355,6 +358,155 @@ test("Gemini Omni adapter packages local image bytes and resumes a URI-delivered
   assert.deepEqual(body.generation_config, { video_config: { task: "image_to_video" } });
   assert.equal(body.input[0].type, "image");
   assert.equal(Buffer.from(body.input[0].data, "base64").toString(), "local-reference");
+  const bytes = Buffer.concat(
+    await Array.fromAsync(adapter.openArtifact(polling.providerJobId, polling.outputs![0]!.artifactId)),
+  );
+  assert.deepEqual(bytes, videoBytes);
+});
+
+test("Ark image adapter sends a direct BYOK request and materializes base64 output locally", async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const fetcher: typeof fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({
+      data: [{ b64_json: Buffer.from("ark-image-bytes").toString("base64") }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  const adapter = new VolcengineArkAdapter({ fetcher });
+  const submitted = await adapter.submit(imageRequest, DEFAULT_ARK_SEEDREAM_MODEL, {
+    credential: createProviderCredential("unit-test-not-a-real-key"),
+  });
+
+  assert.equal(submitted.status, "succeeded");
+  assert.equal(calls[0]?.url, "https://ark.cn-beijing.volces.com/api/v3/images/generations");
+  const headers = new Headers(calls[0]?.init?.headers);
+  assert.equal(headers.get("Authorization")?.startsWith("Bearer "), true);
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), {
+    model: DEFAULT_ARK_SEEDREAM_MODEL,
+    prompt: "A quiet orbital city",
+    size: "2048x2048",
+    response_format: "b64_json",
+    output_format: "png",
+    sequential_image_generation: "disabled",
+    watermark: false,
+  });
+  const bytes = Buffer.concat(
+    await Array.fromAsync(adapter.openArtifact(submitted.providerJobId, submitted.outputs![0]!.artifactId)),
+  );
+  assert.equal(bytes.toString(), "ark-image-bytes");
+});
+
+test("Ark Seedance 2.5 accepts its documented 30-second upper duration", () => {
+  const request: GenerationRequest = {
+    jobId: "job_019c8f55-9200-7000-8000-000000000923",
+    kind: "video",
+    prompt: "A continuous cinematic walk through a night market",
+    inputs: [],
+    requirements: {
+      aspectRatio: "16:9",
+      durationSeconds: 30,
+      mediaType: "video/mp4",
+    },
+  };
+
+  const route = selectProviderRoute([new VolcengineArkAdapter()], {
+    request,
+    credentials: configured("volcengine-ark"),
+  });
+  assert.equal(DEFAULT_ARK_SEEDANCE_MODEL, "doubao-seedance-2-5-260628");
+  assert.deepEqual(route, {
+    providerId: "volcengine-ark",
+    modelId: DEFAULT_ARK_SEEDANCE_MODEL,
+    selectionSource: "registry_default",
+  });
+});
+
+test("routing skips Ark video before persisting a job when two image references are selected", () => {
+  const route = selectProviderRoute([new VolcengineArkAdapter(), new GeminiOmniVideoAdapter()], {
+    request: {
+      jobId: "job_019c8f55-9200-7000-8000-000000000925",
+      kind: "video",
+      prompt: "Blend both references into a continuous reveal",
+      inputs: [
+        { assetId: "asset_first", kind: "image", mediaType: "image/png" },
+        { assetId: "asset_second", kind: "image", mediaType: "image/jpeg" },
+      ],
+      requirements: { aspectRatio: "16:9", audio: "either", mediaType: "video/mp4" },
+    },
+    credentials: configured("volcengine-ark", "google-gemini"),
+  });
+
+  assert.deepEqual(route, {
+    providerId: "google-gemini",
+    modelId: "gemini-omni-flash-preview",
+    selectionSource: "registry_default",
+  });
+});
+
+test("Ark video adapter submits, polls, and downloads a temporary result without persisting its URL", async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const videoBytes = Buffer.from("ark-video-bytes");
+  const fetcher: typeof fetch = async (url, init) => {
+    const target = String(url);
+    calls.push({ url: target, init });
+    if (init?.method === "POST") {
+      return new Response(JSON.stringify({ id: "cgt-test", status: "queued" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (target.endsWith("/contents/generations/tasks/cgt-test")) {
+      return new Response(JSON.stringify({
+        id: "cgt-test",
+        status: "succeeded",
+        content: { video_url: "https://assets.example.test/generated.mp4" },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (target === "https://assets.example.test/generated.mp4") {
+      return new Response(videoBytes, { status: 200, headers: { "Content-Type": "video/mp4" } });
+    }
+    throw new Error("Unexpected Ark request: " + target);
+  };
+  const adapter = new VolcengineArkAdapter({ fetcher });
+  const request: GenerationRequest = {
+    jobId: "job_019c8f55-9200-7000-8000-000000000924",
+    kind: "video",
+    prompt: "A slow push through a rain-soaked neon street",
+    inputs: [{ assetId: "asset_first_frame", kind: "image", mediaType: "image/png" }],
+    requirements: {
+      aspectRatio: "16:9",
+      durationSeconds: 5,
+      audio: "required",
+      mediaType: "video/mp4",
+    },
+  };
+  const credential = createProviderCredential("unit-test-not-a-real-key");
+  const submitted = await adapter.submit(request, DEFAULT_ARK_SEEDANCE_MODEL, {
+    credential,
+    inputBytes: new Map([["asset_first_frame", Buffer.from("local-first-frame")]]),
+  });
+  assert.equal(submitted.status, "queued");
+  const polling = await adapter.poll(submitted.providerJobId, { credential });
+  assert.equal(polling.status, "succeeded");
+  assert.equal(calls[0]?.url, "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks");
+  assert.equal(calls[1]?.url, "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks/cgt-test");
+  assert.equal(calls[2]?.url, "https://assets.example.test/generated.mp4");
+  const body = JSON.parse(String(calls[0]?.init?.body));
+  assert.deepEqual(body, {
+    model: DEFAULT_ARK_SEEDANCE_MODEL,
+    content: [
+      { type: "text", text: request.prompt },
+      {
+        type: "image_url",
+        image_url: { url: "data:image/png;base64," + Buffer.from("local-first-frame").toString("base64") },
+        role: "first_frame",
+      },
+    ],
+    ratio: "16:9",
+    duration: 5,
+    generate_audio: true,
+    watermark: false,
+  });
   const bytes = Buffer.concat(
     await Array.fromAsync(adapter.openArtifact(polling.providerJobId, polling.outputs![0]!.artifactId)),
   );
