@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { test } from "node:test";
 
-import { addNode, createProject, loadProject, saveProjectAtomic, startGeneration } from "@open-canvas/core";
+import { addNode, applyProviderSnapshot, createProject, loadProject, saveProjectAtomic, startGeneration } from "@open-canvas/core";
 
 import { startPreviewBridge } from "../src/preview-bridge.ts";
 
@@ -35,6 +35,61 @@ async function cli(args: string[]): Promise<any> {
   return JSON.parse(stdout);
 }
 
+test("CLI audio generates, resumes, regenerates, imports, selects history and exports locally", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-audio-"));
+  const project = join(root, "project");
+  await cli(["init", project, "--title", "Audio QA"]);
+  const node = await cli(["node", "add", "--project", project, "--kind", "shot", "--media-kind", "audio", "--title", "旁白", "--prompt", "测试", "--provider", "mock"]);
+  const queued = await cli(["generate", "--project", project, "--node", node.nodeId, "--max-polls", "0"]);
+  assert.equal(queued.resumable, true);
+  const first = await cli(["generate", "--project", project, "--node", node.nodeId]);
+  assert.equal(first.jobId, queued.jobId);
+  const second = await cli(["generate", "--project", project, "--node", node.nodeId]);
+  assert.notEqual(first.jobId, second.jobId);
+  const document = await loadProject(project);
+  assert.equal(document.assets[0]!.kind, "audio");
+  const file = join(root, "speech.wav");
+  await cli(["export", "--project", project, "--draft", document.activeDraftId, "--node", node.nodeId, "--output", file]);
+  const bytes = await readFile(file);
+  assert.equal(bytes.toString("ascii", 0, 4), "RIFF");
+  const imported = await cli(["asset", "import", "--project", project, "--file", file]);
+  assert.equal(imported.mediaType, "audio/wav");
+  const copy = await cli(["node", "add", "--project", project, "--kind", "shot", "--media-kind", "audio", "--title", "本地录音", "--prompt", "导入录音", "--media-type", "audio/mpeg"]);
+  const result = await cli(["result", "import", "--project", project, "--node", copy.nodeId, "--file", file]);
+  assert.equal(result.status, "succeeded");
+  const importedNode = (await loadProject(project)).drafts[0]!.nodes.find((node) => node.id === copy.nodeId)!;
+  assert.equal(importedNode.spec.kind === "shot" && importedNode.spec.requirements?.mediaType, "audio/wav");
+  await cli(["node", "update", "--project", project, "--node", node.nodeId, "--prompt", "新版本"]);
+  await cli(["result", "select", "--project", project, "--node", node.nodeId, "--asset", first.assetId]);
+  const selected = await loadProject(project);
+  assert.equal(selected.drafts[0]!.nodes[0]!.execution.status, "dirty");
+  assert.equal(selected.drafts[0]!.nodes[0]!.execution.selectedOutputAssetId, first.assetId);
+  const oldExport = join(root, "selected.wav");
+  await cli(["export", "--project", project, "--draft", selected.activeDraftId, "--node", node.nodeId, "--output", oldExport]);
+  assert.deepEqual(await readFile(oldExport), bytes);
+});
+
+test("interrupted synchronous speech does not silently resubmit on resume", async () => {
+  const project = await mkdtemp(join(tmpdir(), "open-canvas-speech-resume-"));
+  let document = createProject({ title: "Speech resume" });
+  document = addNode(document, { draftId: document.activeDraftId, expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision, title: "Audio", spec: { kind: "shot", mediaKind: "audio", prompt: "test", inputAssetIds: [] } });
+  const nodeId = document.drafts[0]!.nodes[0]!.id;
+  const started = startGeneration(document, { draftId: document.activeDraftId, nodeId,
+    expectedProjectRevision: document.revision, expectedDraftRevision: document.drafts[0]!.revision,
+    resolveRoute: () => ({ providerId: "openai-speech", modelId: "gpt-4o-mini-tts", selectionSource: "registry_default" }) });
+  document = applyProviderSnapshot(started.document, { draftId: document.activeDraftId, jobId: started.request.jobId,
+    snapshot: { providerJobId: "openai-speech:" + started.request.jobId, status: "queued" } });
+  await saveProjectAtomic(project, document);
+  const result = await cliProcess(["generate", "--project", project, "--node", nodeId], { OPENAI_API_KEY: "synthetic-test-credential" });
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /synchronous/);
+  assert.doesNotMatch(result.stderr, /synthetic-test-credential/);
+  const after = await loadProject(project);
+  assert.equal(after.drafts[0]!.jobs.length, 1);
+  assert.equal(after.drafts[0]!.nodes[0]!.execution.status, "failed");
+});
+
 test("CLI prints machine-readable help without requiring a project", async () => {
   const long = await cliProcess(["--help"]);
   assert.equal(long.code, 0, long.stderr);
@@ -46,12 +101,42 @@ test("CLI prints machine-readable help without requiring a project", async () =>
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("node move")));
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("edge disconnect")));
   assert.ok(longHelp.commands.some((command: string) => command.startsWith("script expand")));
+  assert.ok(longHelp.commands.some((command: string) => command.startsWith("result import")));
+  assert.match(longHelp.generation.configuredRoutes.join("\n"), /ARK_API_KEY/);
   assert.match(longHelp.generation.configuredRoutes.join("\n"), /OPENAI_API_KEY/);
   assert.doesNotMatch(long.stdout, /sk-[A-Za-z0-9]/);
 
   const short = await cliProcess(["-h"]);
   assert.equal(short.code, 0, short.stderr);
   assert.deepEqual(JSON.parse(short.stdout), longHelp);
+});
+
+test("CLI loads a safe user provider configuration without exposing credentials", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-provider-config-"));
+  const configPath = join(root, "providers.json");
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    providers: [{
+      id: "studio-ark",
+      adapter: "volcengine-ark",
+      credentialEnv: "STUDIO_ARK_KEY",
+      models: { image: "studio-image-endpoint", video: "studio-video-endpoint" },
+      priority: 20,
+    }],
+  }));
+
+  const result = await cliProcess(["provider", "list", "--provider-config", configPath], { STUDIO_ARK_KEY: "" });
+  assert.equal(result.code, 0, result.stderr);
+  const listed = JSON.parse(result.stdout);
+  assert.equal(listed.source, "file");
+  assert.equal(listed.providers[0].id, "studio-ark");
+  assert.equal(listed.providers[0].credentialEnv, "STUDIO_ARK_KEY");
+  assert.equal(listed.providers[0].configured, false);
+  assert.deepEqual(listed.providers[0].capabilities.map((capability: any) => capability.modelId), [
+    "studio-image-endpoint",
+    "studio-video-endpoint",
+  ]);
+  assert.doesNotMatch(result.stdout, /STUDIO_ARK_KEY=/);
 });
 
 test("CLI deletes a node together with its incident edges", async () => {
@@ -530,6 +615,75 @@ test("CLI imports a local reference asset into the project asset store", async (
   assert.equal(duplicate.revision, imported.revision);
 });
 
+test("CLI materializes an agent-produced local file as a node result", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-result-import-"));
+  const projectDir = join(root, "demo");
+  const source = join(root, "codex-output.png");
+  const bytes = Buffer.from("codex-generated-image-result\n", "utf8");
+  await writeFile(source, bytes);
+  await cli(["init", projectDir, "--title", "Agent result"]);
+  const shot = await cli([
+    "node", "add", "--project", projectDir, "--kind", "shot", "--title", "Cover",
+    "--prompt", "A generated cover", "--media-kind", "image", "--aspect-ratio", "1:1",
+  ]);
+
+  const result = await cli([
+    "result", "import", "--project", projectDir, "--node", shot.nodeId, "--file", source,
+    "--provider", "codex-imagegen", "--model", "demo-image-v1",
+  ]);
+  assert.equal(result.status, "succeeded");
+  assert.equal(result.route.providerId, "codex-imagegen");
+  assert.equal(result.route.modelId, "demo-image-v1");
+  await access(join(projectDir, result.assetPath));
+
+  const document = await loadProject(projectDir);
+  const draft = document.drafts[0]!;
+  const node = draft.nodes.find((candidate) => candidate.id === shot.nodeId)!;
+  const job = draft.jobs.find((candidate) => candidate.id === result.jobId)!;
+  const asset = document.assets.find((candidate) => candidate.id === result.assetId)!;
+  assert.equal(node.execution.status, "succeeded");
+  assert.deepEqual(node.execution.outputAssetIds, [result.assetId]);
+  assert.equal(job.status, "succeeded");
+  assert.equal(job.providerJobId.startsWith("local:"), true);
+  assert.equal(asset.origin.kind, "job");
+  assert.equal(asset.origin.kind === "job" ? asset.origin.jobId : null, result.jobId);
+  assert.deepEqual(await readFile(join(projectDir, result.assetPath)), bytes);
+});
+
+test("CLI materializes a PNG result for an image composition node", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-image-composition-result-"));
+  const projectDir = join(root, "demo");
+  const source = join(root, "source.png");
+  const resultFile = join(root, "composition.png");
+  await writeFile(source, Buffer.from("source-image-result\n", "utf8"));
+  await writeFile(resultFile, Buffer.from("composition-image-result\n", "utf8"));
+  await cli(["init", projectDir, "--title", "Image composition"]);
+  const shot = await cli([
+    "node", "add", "--project", projectDir, "--kind", "shot", "--title", "Source",
+    "--prompt", "A source image", "--media-kind", "image",
+  ]);
+  await cli([
+    "result", "import", "--project", projectDir, "--node", shot.nodeId, "--file", source,
+  ]);
+  const composition = await cli([
+    "node", "add", "--project", projectDir, "--kind", "composition", "--title", "Image output",
+    "--role", "composition", "--media-type", "image/png",
+  ]);
+  await cli([
+    "edge", "connect", "--project", projectDir, "--kind", "dependency",
+    "--source", shot.nodeId, "--target", composition.nodeId,
+  ]);
+
+  const result = await cli([
+    "result", "import", "--project", projectDir, "--node", composition.nodeId, "--file", resultFile,
+  ]);
+  assert.equal(result.status, "succeeded");
+  const document = await loadProject(projectDir);
+  const asset = document.assets.find((candidate) => candidate.id === result.assetId)!;
+  assert.equal(asset.kind, "image");
+  assert.equal(asset.mediaType, "image/png");
+});
+
 test("invalid mock routing fails before a job is persisted", async () => {
   const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-route-"));
   const projectDir = join(root, "demo");
@@ -554,7 +708,7 @@ test("CLI requires an explicit mock route or a configured BYOK provider", async 
     "node", "add", "--project", projectDir, "--kind", "shot", "--title", "Shot",
     "--prompt", "No silent fallback", "--media-kind", "image",
   ]);
-  const environment = { OPENAI_API_KEY: "", GEMINI_API_KEY: "" };
+  const environment = { ARK_API_KEY: "", OPENAI_API_KEY: "", GEMINI_API_KEY: "" };
   const defaultRoute = await cliProcess(
     ["generate", "--project", projectDir, "--node", shot.nodeId],
     environment,
@@ -579,6 +733,37 @@ test("CLI requires an explicit mock route or a configured BYOK provider", async 
   document = JSON.parse(await readFile(join(projectDir, "project.json"), "utf8"));
   assert.equal(document.drafts[0].nodes[0].execution.status, "dirty");
   assert.equal(document.drafts[0].jobs.length, 0);
+});
+
+test("generate resolves an explicitly selected user provider instance from local configuration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "open-canvas-cli-custom-provider-route-"));
+  const projectDir = join(root, "demo");
+  const configPath = join(root, "providers.json");
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    providers: [{
+      id: "studio-images",
+      adapter: "openai",
+      credentialEnv: "STUDIO_IMAGES_KEY",
+      models: { image: "studio-image-endpoint" },
+      priority: 5,
+    }],
+  }));
+  await cli(["init", projectDir, "--title", "Custom provider route"]);
+  const shot = await cli([
+    "node", "add", "--project", projectDir, "--kind", "shot", "--title", "Shot",
+    "--prompt", "A studio image", "--media-kind", "image",
+    "--provider", "studio-images", "--model", "studio-image-endpoint",
+  ]);
+
+  const result = await cliProcess([
+    "generate", "--project", projectDir, "--node", shot.nodeId, "--provider-config", configPath,
+  ], { STUDIO_IMAGES_KEY: "" });
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /STUDIO_IMAGES_KEY/);
+  const document = await loadProject(projectDir);
+  assert.equal(document.drafts[0]!.nodes[0]!.execution.status, "dirty");
+  assert.equal(document.drafts[0]!.jobs.length, 0);
 });
 
 test("generate resumes a queued job persisted by an interrupted process", async () => {

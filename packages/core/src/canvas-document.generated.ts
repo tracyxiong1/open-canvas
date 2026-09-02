@@ -39,6 +39,7 @@ export type Execution = {
 } & {
   [k: string]: unknown;
 } & {
+  selectedOutputAssetId?: AssetId;
   status: "dirty" | "queued" | "running" | "succeeded" | "failed";
   inputFingerprint: Sha256;
   activeJobId?: JobId;
@@ -113,12 +114,14 @@ export interface Position {
 export interface ShotSpec {
   kind: "shot";
   prompt: string;
-  mediaKind: "image" | "video";
+  mediaKind: "image" | "video" | "audio";
   inputAssetIds: AssetId[];
   requirements?: OutputRequirements;
   routing?: RoutingHints;
 }
 export interface OutputRequirements {
+  voice?: string;
+  speed?: number;
   aspectRatio?: "16:9" | "9:16" | "1:1";
   width?: number;
   height?: number;
@@ -153,7 +156,7 @@ export interface JobError {
 }
 export interface Asset {
   id: AssetId;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
   mediaType: string;
   byteLength: number;
   checksumSha256: Sha256;

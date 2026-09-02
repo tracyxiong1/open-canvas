@@ -124,11 +124,15 @@ function assetRecords(document: CanvasDocument, assetIds: string[], owner: strin
   });
 }
 
+export function effectiveOutputAssetIds(node: Node): string[] {
+  return node.execution.selectedOutputAssetId ? [node.execution.selectedOutputAssetId] : node.execution.outputAssetIds;
+}
+
 function dependencyRecords(draft: Draft, nodeId: string): Array<{ nodeId: string; inputFingerprint: string; outputAssetIds: string[] }> {
   return orderedDependencyNodes(draft, nodeId).map((dependency) => ({
     nodeId: dependency.id,
     inputFingerprint: dependency.execution.inputFingerprint,
-    outputAssetIds: dependency.execution.outputAssetIds,
+    outputAssetIds: effectiveOutputAssetIds(dependency),
   }));
 }
 
@@ -167,7 +171,7 @@ export function computeNodeFingerprint(document: CanvasDocument, draft: Draft, n
   const dependencies = orderedCompositionDependencies(draft, node.id).map((dependency) => ({
     nodeId: dependency.id,
     inputFingerprint: dependency.execution.inputFingerprint,
-    outputAssetIds: dependency.execution.outputAssetIds,
+    outputAssetIds: effectiveOutputAssetIds(dependency),
   }));
   return canonicalSha256({
     schemaVersion: 1,
@@ -297,6 +301,25 @@ function validateDraft(document: CanvasDocument, draft: Draft): void {
   for (const node of draft.nodes) {
     if (isContextComposition(node) && node.execution.status !== "dirty") {
       throw new CanvasValidationError([`context node ${node.id} must stay dirty`]);
+    }
+    if (node.spec.kind === "shot") {
+      const requirements = node.spec.requirements ?? {};
+      if (node.spec.mediaKind === "audio") {
+        if (requirements.aspectRatio !== undefined || requirements.width !== undefined || requirements.height !== undefined
+          || requirements.count !== undefined || requirements.durationSeconds !== undefined || requirements.audio !== undefined) {
+          throw new CanvasValidationError([`audio node ${node.id} cannot use image or video requirements`]);
+        }
+      } else if (requirements.voice !== undefined || requirements.speed !== undefined) {
+        throw new CanvasValidationError([`speech settings require an audio node`]);
+      }
+      if (node.spec.mediaKind === "audio" && requirements.mediaType !== undefined && !requirements.mediaType.startsWith("audio/")) {
+        throw new CanvasValidationError([`node ${node.id} output media type does not match its kind`]);
+      }
+    }
+    const selectedOutput = node.execution.selectedOutputAssetId;
+    if (selectedOutput !== undefined && (node.spec.kind !== "shot" || !draft.jobs.some((job) =>
+      job.nodeId === node.id && job.status === "succeeded" && job.outputAssetIds.includes(selectedOutput)))) {
+      throw new CanvasValidationError([`node ${node.id} selected output must belong to its successful history`]);
     }
     if (isLayoutGroup(node)) {
       if (node.execution.status !== "dirty" || node.execution.activeJobId !== undefined || node.execution.outputAssetIds.length > 0) {

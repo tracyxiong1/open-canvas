@@ -208,6 +208,8 @@
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
+        "voice": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "speed": { "type": "number", "minimum": 0.25, "maximum": 4 },
         "aspectRatio": {
           "enum": [
             "16:9",
@@ -265,7 +267,8 @@
         "mediaKind": {
           "enum": [
             "image",
-            "video"
+            "video",
+            "audio"
           ]
         },
         "inputAssetIds": {
@@ -395,6 +398,7 @@
         "outputAssetIds"
       ],
       "properties": {
+        "selectedOutputAssetId": { "$ref": "#/$defs/assetId" },
         "status": {
           "enum": [
             "dirty",
@@ -777,7 +781,8 @@
         "kind": {
           "enum": [
             "image",
-            "video"
+            "video",
+            "audio"
           ]
         },
         "mediaType": {

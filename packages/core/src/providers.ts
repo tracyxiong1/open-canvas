@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalSha256 } from "./canonical.js";
 import type { ResolvedRoute, RouteHint } from "./canvas-document.generated.js";
 
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "video" | "audio";
 export type InputKind = "text" | MediaKind;
 export type ProviderErrorCode =
   | "provider_rejected"
@@ -17,6 +17,8 @@ export interface GenerationRequest {
   prompt: string;
   inputs: Array<{ assetId: string; kind: MediaKind; mediaType: string }>;
   requirements: {
+    voice?: string;
+    speed?: number;
     aspectRatio?: "16:9" | "9:16" | "1:1";
     width?: number;
     height?: number;
@@ -47,6 +49,8 @@ export interface ProviderSnapshot {
 }
 
 export interface ModelCapability {
+  voices?: readonly string[];
+  speechSpeed?: { min: number; max: number };
   modelId: string;
   kind: MediaKind;
   inputKinds: readonly InputKind[];
@@ -236,6 +240,9 @@ function capabilityMatches(request: GenerationRequest, capability: ModelCapabili
     || (capability.inputMediaTypes !== undefined && !capability.inputMediaTypes.includes(input.mediaType))
   ))) return false;
   const requirements = request.requirements;
+  if (requirements.voice !== undefined && !capability.voices?.includes(requirements.voice)) return false;
+  if (requirements.speed !== undefined && (!capability.speechSpeed
+    || requirements.speed < capability.speechSpeed.min || requirements.speed > capability.speechSpeed.max)) return false;
   if (requirements.mediaType !== undefined && !capability.outputMediaTypes.includes(requirements.mediaType)) return false;
   if (
     requirements.aspectRatio !== undefined
@@ -447,14 +454,25 @@ const MP4_BYTES = Buffer.from(
   "base64",
 );
 
+// One second of silence is an explicit test fixture, never a speech result.
+function mockWavBytes(): Buffer {
+  const bytes = Buffer.alloc(44 + 16000);
+  bytes.write("RIFF", 0); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write("WAVEfmt ", 8);
+  bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(8000, 24); bytes.writeUInt32LE(16000, 28);
+  bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36); bytes.writeUInt32LE(16000, 40);
+  return bytes;
+}
+
 function artifact(kind: MediaKind): { record: ProviderArtifact; bytes: Buffer } {
-  const bytes = kind === "image" ? PNG_BYTES : MP4_BYTES;
+  const bytes = kind === "image" ? PNG_BYTES : kind === "audio" ? mockWavBytes() : MP4_BYTES;
   const digest = createHash("sha256").update(bytes).digest("hex");
   return {
     record: {
       artifactId: `mock-${kind}-fixture-v1`,
       kind,
-      mediaType: kind === "image" ? "image/png" : "video/mp4",
+      mediaType: kind === "image" ? "image/png" : kind === "audio" ? "audio/wav" : "video/mp4",
       byteLength: bytes.length,
       checksumSha256: `sha256:${digest}`,
     },
@@ -1417,10 +1435,88 @@ export class VolcengineArkAdapter implements ProviderAdapter {
   }
 }
 
+export const DEFAULT_OPENAI_SPEECH_MODEL = "gpt-4o-mini-tts";
+export const SPEECH_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"] as const;
+
+/** Official POST /v1/audio/speech. Synchronous bytes stay process-local. */
+export class OpenAISpeechAdapter implements ProviderAdapter {
+  readonly manifest: ProviderManifest;
+  readonly #fetch: FetchLike;
+  readonly #jobs = new Map<string, StoredArtifact>();
+
+  constructor(options: OpenAIImageAdapterOptions = {}) {
+    this.#fetch = options.fetcher ?? globalThis.fetch;
+    this.manifest = {
+      providerId: configuredIdentifier(options.providerId, "openai-speech", "Speech provider identifier"),
+      credentialEnv: configuredIdentifier(options.credentialEnv, "OPENAI_API_KEY", "Speech credential environment variable"),
+      capabilities: [{
+        modelId: configuredIdentifier(options.modelId, DEFAULT_OPENAI_SPEECH_MODEL, "Speech model identifier"),
+        kind: "audio", inputKinds: ["text"], maxInputs: 0,
+        outputMediaTypes: ["audio/wav", "audio/mpeg"],
+        voices: SPEECH_VOICES, speechSpeed: { min: 0.25, max: 4 }, audio: "always",
+        registryPriority: configuredRegistryPriority(options.registryPriority, 100, "Speech registry priority"),
+      }],
+    };
+  }
+
+  async submit(request: GenerationRequest, modelId: string, context?: ProviderExecutionContext): Promise<ProviderSnapshot> {
+    requireCapability(this.manifest, request, modelId);
+    if (!request.prompt.trim() || [...request.prompt].length > 4096) {
+      throw new ProviderAdapterError("provider_rejected", false, "Speech text must contain 1 to 4096 characters");
+    }
+    const credential = credentialValue(context?.credential);
+    const mediaType = request.requirements.mediaType ?? "audio/wav";
+    let bytes: Buffer;
+    try {
+      const response = await this.#fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST", redirect: "error", signal: AbortSignal.timeout(120000),
+        headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId, input: request.prompt,
+          voice: request.requirements.voice ?? "coral", speed: request.requirements.speed ?? 1,
+          response_format: mediaType === "audio/mpeg" ? "mp3" : "wav" }),
+      });
+      if (!response.ok) {
+        throw new ProviderAdapterError("provider_rejected", response.status === 429 || response.status >= 500,
+          `Speech request failed (HTTP ${response.status}); check local configuration or retry`);
+      }
+      bytes = Buffer.from(await response.arrayBuffer());
+      const validWav = bytes.length > 44 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WAVE";
+      const validMp3 = bytes.length > 3 && (bytes.toString("ascii", 0, 3) === "ID3" || (bytes[0] === 255 && (bytes[1]! & 224) === 224));
+      if (!(mediaType === "audio/wav" ? validWav : validMp3)) {
+        throw new ProviderAdapterError("provider_protocol", false, "Speech response did not contain the requested audio format");
+      }
+    } catch (error) {
+      if (error instanceof ProviderAdapterError) throw error;
+      throw new ProviderAdapterError("provider_unavailable", true, "Speech transport failed or timed out; provider completion is unknown");
+    }
+    const providerJobId = "openai-speech:" + request.jobId;
+    const artifact = artifactForBytes(providerJobId + ":audio", "audio", mediaType, bytes);
+    this.#jobs.set(providerJobId, { artifact, bytes });
+    return { providerJobId, status: "succeeded", progress: 1, outputs: [artifact] };
+  }
+
+  async poll(providerJobId: string): Promise<ProviderSnapshot> {
+    const job = this.#jobs.get(providerJobId);
+    if (!job) throw new ProviderAdapterError("provider_protocol", false, "Speech is synchronous; no remote polling handle is available");
+    return { providerJobId, status: "succeeded", progress: 1, outputs: [job.artifact] };
+  }
+
+  async *openArtifact(providerJobId: string, artifactId: string): AsyncIterable<Uint8Array> {
+    const job = this.#jobs.get(providerJobId);
+    if (!job || job.artifact.artifactId !== artifactId) throw new ProviderAdapterError("provider_protocol", false, "Speech artifact is unavailable");
+    yield job.bytes;
+  }
+}
+
 export class MockProviderAdapter implements ProviderAdapter {
   readonly manifest: ProviderManifest = {
     providerId: "mock",
     capabilities: [
+      {
+        modelId: "mock-audio-v1", kind: "audio", inputKinds: ["text"], maxInputs: 0,
+        outputMediaTypes: ["audio/wav"], voices: SPEECH_VOICES, speechSpeed: { min: 0.25, max: 4 },
+        audio: "always", registryPriority: 1000,
+      },
       {
         modelId: "mock-image-v1",
         kind: "image",

@@ -560,6 +560,63 @@ test("composition provider inputs follow sequence order rather than edge inserti
   assert.deepEqual(started.request.inputs.map((input) => input.assetId), expectedAssetIds);
 });
 
+test("an image composition requests and accepts an image output", () => {
+  let document = createProject({ title: "Image composition" });
+  document = addNode(document, {
+    draftId: document.activeDraftId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision,
+    title: "Source image",
+    spec: { kind: "shot", prompt: "A source image", mediaKind: "image", inputAssetIds: [] },
+  });
+  const sourceId = document.drafts[0]!.nodes[0]!.id;
+  const sourceGeneration = startGeneration(document, {
+    draftId: document.activeDraftId,
+    nodeId: sourceId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision,
+  });
+  document = completeGeneration(sourceGeneration.document, {
+    draftId: sourceGeneration.document.activeDraftId,
+    jobId: sourceGeneration.request.jobId,
+    providerJobId: "mock:image-source",
+    artifact: { kind: "image", mediaType: "image/png", bytes: Buffer.from("source-image") },
+  });
+  document = addNode(document, {
+    draftId: document.activeDraftId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision,
+    title: "Image composition output",
+    spec: { kind: "composition", mediaType: "image/png" },
+  });
+  const compositionId = document.drafts[0]!.nodes.find((node) => node.title === "Image composition output")!.id;
+  document = connectNodes(document, {
+    draftId: document.activeDraftId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision,
+    kind: "dependency",
+    sourceNodeId: sourceId,
+    targetNodeId: compositionId,
+  });
+
+  const compositionGeneration = startGeneration(document, {
+    draftId: document.activeDraftId,
+    nodeId: compositionId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0]!.revision,
+    resolveRoute: () => ({ providerId: "openai", modelId: "gpt-image-2", selectionSource: "registry_default" }),
+  });
+  assert.equal(compositionGeneration.request.kind, "image");
+  const completed = completeGeneration(compositionGeneration.document, {
+    draftId: compositionGeneration.document.activeDraftId,
+    jobId: compositionGeneration.request.jobId,
+    providerJobId: "openai:image-composition",
+    artifact: { kind: "image", mediaType: "image/png", bytes: Buffer.from("composed-image") },
+  });
+  const composition = completed.drafts[0]!.nodes.find((node) => node.id === compositionId)!;
+  assert.equal(composition.execution.status, "succeeded");
+});
+
 test("shot completion recomputes reverse-ordered dependency descendants topologically", () => {
   const { document, shotId, innerId, outerId } = reverseOrderedGenerationChain();
   const draft = document.drafts[0];
