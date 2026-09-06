@@ -11,7 +11,6 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
-  useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
@@ -80,6 +79,7 @@ import { getNodeSize } from "./project-document.js";
 import {
   buildAnchoredGraphViewport,
   buildAutoLayoutPositions,
+  composerHorizontalOffset,
   connectionRejectionMessage,
   connectionToGraphMutation,
   CANVAS_PRESENTATION_SCALE,
@@ -89,6 +89,7 @@ import {
   HANDLE_IDS,
   isLayoutGroupNode,
   resolveCompositionShotOrder,
+  shouldSyncFlowProjection,
   shouldSyncFlowSelection,
   toFlowEdges,
   toFlowNodes,
@@ -99,7 +100,9 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const FIT_VIEW_PADDING = 0.12;
 const DEFAULT_CANVAS_ZOOM = 0.5;
-const FIT_VIEW_BIAS = Object.freeze({ x: 10, y: -13.825 });
+// The top bar is fixed above the canvas. Keep fitted cards below it so the
+// first node's title and connection port remain reachable on compact screens.
+const FIT_VIEW_BIAS = Object.freeze({ x: 10, y: 38 });
 // A dense fan-out is framed like a working canvas, not a presentation slide.
 // Reference capture shows that the authored source has a different, deliberate
 // working origin on compact screens. The anchors stay in screen coordinates;
@@ -1969,7 +1972,6 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
     });
   }, [draft, graphFraming]);
   const { fitView, getViewport, screenToFlowPosition, setViewport, zoomIn, zoomOut } = useReactFlow();
-  const nodesInitialized = useNodesInitialized();
   const [tool, setTool] = useState("select");
   const [showEdges, setShowEdges] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(false);
@@ -1981,15 +1983,16 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   const [quickActionsPosition, setQuickActionsPosition] = useState(null);
   const [quickActionMenu, setQuickActionMenu] = useState(null);
   const [composerPosition, setComposerPosition] = useState(Position.Bottom);
-  // The inline editor remains centered on its node. Like the interaction
-  // reference, it may naturally extend past the visible canvas edge instead
-  // of jumping horizontally between selection states.
+  const [isNodeDragActive, setIsNodeDragActive] = useState(false);
+  // Keep the editor anchored to its node, clamping only at viewport edges
+  // so all four node types remain editable on compact screens.
   const composerAlign = "center";
   const initialFitDraftRef = useRef(null);
   const previousNarrowViewportRef = useRef(isNarrowViewport);
   const composerPositionRef = useRef(composerPosition);
   const marqueeSelectionActiveRef = useRef(false);
   const groupDragRef = useRef(null);
+  const nodeDragActiveRef = useRef(false);
   const initialViewport = useMemo(() => ({
     // Preserve the reference's fixed world origin at narrow widths. The
     // canvas does not auto-fit its authored layout when the window shrinks.
@@ -2025,6 +2028,25 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   const canCreateGroup = selectedNodeIds.length >= 2
     && selectedNodeIds.every((nodeId) => !groupedMemberIds.has(nodeId));
   const selectedNodeKind = selectedNode ? getSurfaceKind(selectedNode) : null;
+  const syncComposerPosition = useCallback(() => {
+    const viewport = viewportRef.current;
+    const composer = viewport?.querySelector(".node-composer:not(.composer-expanded)");
+    if (!composer) return;
+    const bounds = viewport.getBoundingClientRect();
+    const rect = composer.getBoundingClientRect();
+    const previousOffset = Number(composer.dataset.viewportOffset ?? 0);
+    const offset = composerHorizontalOffset(rect.left - previousOffset, rect.width, bounds.left, bounds.width);
+    composer.dataset.viewportOffset = String(offset);
+    composer.style.translate = `${offset}px 0`;
+  }, []);
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(syncComposerPosition);
+    window.addEventListener("resize", syncComposerPosition);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncComposerPosition);
+    };
+  }, [selectedNode, isNarrowViewport, syncComposerPosition]);
   const nodeData = useMemo(() => ({ assets, onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onExpandScript, graph: draft, viewportZoom: zoom, composerPosition, composerAlign }), [assets, composerAlign, composerPosition, draft, focusNode, onExpandScript, onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, zoom]);
   const projectedNodes = useMemo(
     () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE, selectedNodeIds),
@@ -2039,6 +2061,17 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
     const layoutChanges = changes.filter((change) => change.type !== "select");
     if (layoutChanges.length > 0) applyNodesChange(layoutChanges);
   }, [applyNodesChange]);
+  const beginNodeDrag = useCallback(() => {
+    // The ref closes the small gap before React commits the state update. This
+    // matters because selecting a card at drag start can immediately produce
+    // a fresh canonical projection.
+    nodeDragActiveRef.current = true;
+    setIsNodeDragActive(true);
+  }, []);
+  const finishNodeDrag = useCallback(() => {
+    nodeDragActiveRef.current = false;
+    setIsNodeDragActive(false);
+  }, []);
   const edges = useMemo(
     () => showEdges ? toFlowEdges(draft, selectedNodeId, selectedEdgeIds) : [],
     [draft, selectedEdgeIds, selectedNodeId, showEdges],
@@ -2143,18 +2176,31 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   }, [nodes, selectedNode, selectedNodeKind, zoom]);
 
   useEffect(() => {
-    if (arrangementPreview) return;
+    if (!shouldSyncFlowProjection({
+      hasArrangementPreview: Boolean(arrangementPreview),
+      isNodeDragActive: nodeDragActiveRef.current || isNodeDragActive,
+    })) return;
     setNodes(projectedNodes);
-  }, [arrangementPreview, projectedNodes, setNodes]);
+  }, [arrangementPreview, isNodeDragActive, projectedNodes, setNodes]);
 
   useEffect(() => {
-    if (!nodesInitialized || draft.nodes.length === 0 || initialFitDraftRef.current === draft.id) return undefined;
-    initialFitDraftRef.current = draft.id;
-    const frame = window.requestAnimationFrame(() => {
-      void fitCanvas(0);
+    if (draft.nodes.length === 0 || initialFitDraftRef.current === draft.id) return undefined;
+    // Custom card content can keep React Flow's nodes-initialized signal false
+    // even after the cards are visibly mounted. Wait for two paint frames and
+    // fit from the rendered bounds instead, so the initial viewport includes
+    // every upstream context node instead of leaving only its edge visible.
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        initialFitDraftRef.current = draft.id;
+        void fitCanvas(0);
+      });
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [draft.id, draft.nodes.length, fitCanvas, nodesInitialized]);
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [draft.id, draft.nodes.length, fitCanvas]);
 
   useEffect(() => {
     const wasNarrow = previousNarrowViewportRef.current;
@@ -2385,6 +2431,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
           selectCanvasNodes(nextNodeIds, nextPrimaryNodeId);
         }}
         onNodeDragStart={(_, node) => {
+          beginNodeDrag();
           if (node.data?.isLayoutGroup) {
             const memberNodeIds = node.data.groupBounds?.memberNodeIds ?? [];
             groupDragRef.current = {
@@ -2423,6 +2470,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
           }));
         }}
         onNodeDragStop={(_, node, movedNodes) => {
+          finishNodeDrag();
           const drag = groupDragRef.current;
           if (drag?.groupNodeId === node.id) {
             groupDragRef.current = null;
@@ -2431,7 +2479,6 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
               y: Math.round((node.position.y - drag.startPosition.y) / CANVAS_PRESENTATION_SCALE),
             };
             if (delta.x === 0 && delta.y === 0) {
-              setNodes(projectedNodes);
               return;
             }
             onMoveGroup?.(node.id, delta);
@@ -2473,6 +2520,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
         onMove={(_, viewport) => {
           setZoom(viewport.zoom);
           window.requestAnimationFrame(syncQuickActionsPosition);
+          window.requestAnimationFrame(syncComposerPosition);
         }}
         nodesDraggable={tool === "select"}
         edgesReconnectable={false}

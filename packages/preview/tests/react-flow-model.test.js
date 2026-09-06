@@ -13,6 +13,7 @@ import {
 import {
   buildAnchoredGraphViewport,
   buildAutoLayoutPositions,
+  composerHorizontalOffset,
   connectionRejectionMessage,
   connectionToGraphMutation,
   findOpenNodePosition,
@@ -22,6 +23,7 @@ import {
   HANDLE_IDS,
   isLayoutGroupNode,
   resolveCompositionShotOrder,
+  shouldSyncFlowProjection,
   shouldSyncFlowSelection,
   toFlowEdges,
   toFlowNodes,
@@ -32,6 +34,12 @@ function activeDraft() {
 }
 
 describe("React Flow projection", () => {
+  it("keeps inline controls inside desktop and compact viewports without moving nodes", () => {
+    expect(composerHorizontalOffset(300, 660, 0, 1280)).toBe(0);
+    expect(composerHorizontalOffset(900, 660, 0, 1280)).toBe(-292);
+    expect(composerHorizontalOffset(-80, 366, 0, 390)).toBe(92);
+    expect(composerHorizontalOffset(700, 366, 0, 390)).toBe(-688);
+  });
   it("anchors a wide graph at the compact reference origin without changing document coordinates", () => {
     const viewport = buildAnchoredGraphViewport({
       nodes: [
@@ -76,6 +84,13 @@ describe("React Flow projection", () => {
       selected: true,
       data: { primarySelected: true },
     });
+  });
+
+  it("defers a canonical node projection until a local drag has finished", () => {
+    expect(shouldSyncFlowProjection()).toBe(true);
+    expect(shouldSyncFlowProjection({ isNodeDragActive: true })).toBe(false);
+    expect(shouldSyncFlowProjection({ hasArrangementPreview: true })).toBe(false);
+    expect(shouldSyncFlowProjection({ hasArrangementPreview: true, isNodeDragActive: true })).toBe(false);
   });
 
   it("projects a durable layout group behind its members with derived bounds", () => {
@@ -202,21 +217,27 @@ describe("React Flow projection", () => {
       .toEqual({ status: "incomplete", nodeIds: ["shot-a", "shot-b", "shot-c"] });
   });
 
-  it("animates edges connected to the selection and active execution flow", () => {
+  it("keeps selection-linked edges static and animates canonical execution flow", () => {
     const draft = activeDraft();
     const edge = draft.edges[0];
     const selectedEdges = toFlowEdges(draft, edge.sourceNodeId);
-    expect(selectedEdges.find((item) => item.id === edge.id).className).toContain("active");
-    expect(selectedEdges.find((item) => item.id === edge.id).data.active).toBe(true);
+    const selectionLinkedEdge = selectedEdges.find((item) => item.id === edge.id);
+    expect(selectionLinkedEdge.className).toContain("linked");
+    expect(selectionLinkedEdge.className).not.toContain("active");
+    expect(selectionLinkedEdge.data).toMatchObject({ linked: true, active: false });
 
     const unrelatedNode = draft.nodes.find((node) => node.id !== edge.sourceNodeId && node.id !== edge.targetNodeId);
-    expect(toFlowEdges(draft, unrelatedNode.id).find((item) => item.id === edge.id).className).not.toContain("active");
+    expect(toFlowEdges(draft, unrelatedNode.id).find((item) => item.id === edge.id).className).not.toContain("linked");
 
     const runningDraft = {
       ...draft,
-      nodes: draft.nodes.map((node) => node.id === edge.targetNodeId ? { ...node, status: "running" } : node),
+      nodes: draft.nodes.map((node) => node.id === edge.targetNodeId
+        ? { ...node, execution: { ...node.execution, status: "running" } }
+        : node),
     };
-    expect(toFlowEdges(runningDraft).find((item) => item.id === edge.id).className).toContain("active");
+    const runningEdge = toFlowEdges(runningDraft).find((item) => item.id === edge.id);
+    expect(runningEdge.className).toContain("active");
+    expect(runningEdge.data.active).toBe(true);
   });
 
   it("projects an explicitly selected edge for visible selection and keyboard deletion", () => {

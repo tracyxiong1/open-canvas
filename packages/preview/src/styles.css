@@ -413,6 +413,11 @@ textarea:focus-visible,
 
 .react-flow__edge.canvas-edge.active .react-flow__edge-path { stroke: #c0c8d0; }
 
+.react-flow__edge.canvas-edge.linked .react-flow__edge-path {
+  stroke: #c0c8d0;
+  stroke-width: 2;
+}
+
 .react-flow__edge.selected .react-flow__edge-path {
   stroke: var(--accent);
   stroke-width: 1.75;
@@ -1080,6 +1085,7 @@ textarea:focus-visible,
   position: relative;
   z-index: 10;
   width: 660px;
+  max-width: calc(100vw - 24px);
   color: #dcdcdc;
   background: #262626;
   border: .5px solid #363636;
@@ -1124,6 +1130,7 @@ textarea:focus-visible,
 }
 
 .node-composer.composer-expanded {
+  translate: none !important;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1265,7 +1272,10 @@ textarea:focus-visible,
   flex: 1 1 0;
   align-items: center;
   gap: 4px;
+  overflow-x: auto;
 }
+
+.composer-settings-group > * { flex-shrink: 0; }
 
 /* The media composer keeps its execution controls pinned to the lower edge,
    leaving the prompt area readable while preserving a stable compact height. */
