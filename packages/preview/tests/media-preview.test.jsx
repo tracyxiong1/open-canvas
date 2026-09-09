@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { AssetPreview, isPlayableVideoPreview } from "../src/media-preview.jsx";
 
 describe("asset preview media selection", () => {
+  it("renders audio with native playback controls instead of a broken image", () => {
+    render(<AssetPreview asset={{ kind: "audio", mediaType: "audio/wav", previewUrl: "/local/audio" }} alt="旁白" controls />);
+    const audio = screen.getByLabelText("旁白");
+    expect(audio.tagName).toBe("AUDIO");
+    expect(audio).toHaveAttribute("controls");
+    expect(audio).not.toHaveAttribute("autoplay");
+  });
   it("renders a real project video as a playable video element", () => {
     const asset = {
       id: "asset_video",
@@ -11,11 +18,12 @@ describe("asset preview media selection", () => {
       previewUrl: "http://127.0.0.1:43210/asset?id=asset_video",
     };
 
-    render(<AssetPreview asset={asset} alt="镜头视频" controls />);
+    render(<AssetPreview asset={asset} alt="镜头视频" controls autoPlay />);
 
     const video = screen.getByLabelText("镜头视频");
     expect(video.tagName).toBe("VIDEO");
     expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("autoplay");
     expect(isPlayableVideoPreview(asset)).toBe(true);
   });
 
