@@ -6,6 +6,12 @@ Build a new AI video creation product around an infinite canvas. Users create an
 
 ## Confirmed scope
 
+The current node scope is text, image, video and audio (confirmed 2026-09-15).
+Audio covers text-to-speech, project-local import, playback and export; music,
+voice cloning and composition rendering are excluded. Legacy context roles
+remain readable/editable but are hidden from creation menus. See
+`docs/four-node-context.md` for the original gap inventory and acceptance scope.
+
 1. Codex creation skill.
 2. First-party CLI.
 3. Standalone editable infinite-canvas studio.
@@ -25,7 +31,7 @@ A Codex plugin is a later packaging and distribution step, not a separate MVP im
    browser edits; otherwise it preserves those edits and presents an explicit
    choice to load the external revision.
 5. Only when the user explicitly asks to generate does the routing layer select
-   a configured image or video provider and run a job with user-owned
+   a configured image, video or speech provider and run a job with user-owned
    credentials.
 6. A user may explicitly ask to expand a script, create a variation draft, or
    export a selected draft; none of those operations is a prerequisite for
@@ -79,7 +85,9 @@ Reference products inform interaction anatomy only; brand, protected assets, pri
 
 The MVP provider boundary, routing precedence, local BYOK rules, deterministic
 mock, and evidence-backed initial adapters are specified in
-docs/provider-contract.md. The local CLI now executes OpenAI text/image-to-image
-and Gemini Omni Flash text/image-to-video when the corresponding user-owned
-environment credential is configured. The deterministic mock remains
-explicit-only for tests and local demos; it is never the production fallback.
+docs/provider-contract.md. The local CLI reads a user-owned, non-secret
+provider configuration when supplied, then executes direct Ark Seedream image
+and Seedance video paths, OpenAI text/image-to-image, and Gemini Omni Flash
+text/image-to-video using only the configured local credential environment
+variables. The deterministic mock remains explicit-only for tests and local
+demos; it is never the production fallback.

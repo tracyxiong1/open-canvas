@@ -12,9 +12,9 @@ contract and provider APIs.
 packages/cli/src/commands.ts：
 
 - Core 提供纯能力匹配、路由选择、规范化快照和适配器实现，不读取环境变量。
-- CLI 在路由确定后检查环境变量、构造临时凭证，并在本地进程内读取项目素材字节。
+- CLI 读取用户提供的非敏感 provider 配置，在路由确定后检查其中声明的环境变量、构造临时凭证，并在本地进程内读取项目素材字节。
 - 预览端不接收凭证、供应商响应或临时下载地址。
-- 当前可执行的真实路径为 OpenAI 文生图/项目内参考图生成，以及 Gemini Omni Flash 的文生视频和图生视频。
+- 当前可执行的真实路径为火山方舟的 Seedream 文生图/项目内参考图生成、Seedance 文生视频/单图首帧视频，以及 OpenAI 图像和 Gemini 视频路径。
 - composition 节点当前不执行本地剪辑或渲染；CLI 会要求先生成底层镜头。该限制避免将生成式视频误表示为已完成剪辑。
 
 ## Acceptance trace
@@ -96,6 +96,7 @@ interface ModelCapability {
   modelId: string;
   kind: MediaKind;
   inputKinds: InputKind[];
+  maxInputs?: number;            // maximum project-local media references
   outputMediaTypes: string[];
   aspectRatios?: Array<"16:9" | "9:16" | "1:1">;
   sizes?: Array<{ width: number; height: number }>;
@@ -164,7 +165,45 @@ interface RoutingError {
 ```
 
 Persist the resolved route before submission. A retry of the same `jobId` uses
-that persisted route unless a new user mutation creates a new job.
+that persisted route unless a new user mutation creates a new job. In
+particular, a resumed job uses the persisted model ID even if the user's future
+default configuration has changed.
+
+## Local provider configuration
+
+Provider configuration is local runtime configuration, not canvas data. A user
+may pass `--provider-config <path>` to `generate` or set
+`OPEN_CANVAS_PROVIDER_CONFIG` to select the configuration file. `provider list`
+prints only safe metadata and credential availability.
+
+```json
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "ark-primary",
+      "adapter": "volcengine-ark",
+      "credentialEnv": "ARK_API_KEY",
+      "models": {
+        "image": "your-ark-image-endpoint",
+        "video": "your-ark-video-endpoint"
+      },
+      "priority": 90
+    }
+  ]
+}
+```
+
+`adapter` currently supports `volcengine-ark`, `openai`, and
+`google-gemini`. `id` is the stable route identifier persisted on a job;
+`models` contains public model or endpoint identifiers only; `credentialEnv`
+contains an environment-variable name only. The parser is strict and rejects
+unknown fields, so API keys, tokens, endpoint authorization headers, and
+arbitrary transport configuration cannot be placed in this file. No config
+file keeps the three backward-compatible built-in provider defaults. A config
+file replaces those defaults, so keep a provider `id` available while one of
+its jobs is queued or running; its model ID may safely change because resume
+uses the model persisted on that job.
 
 ## Local credential boundary
 
@@ -278,6 +317,41 @@ method can be added without changing submission or polling semantics.
 Initial adapters are selected only where current official API documentation
 supports the required behavior.
 
+### `volcengine-ark`
+
+- Credential: `ARK_API_KEY`.
+- Default models: `doubao-seedream-5-0-260128` for images and
+  `doubao-seedance-2-5-260628` for videos. These are public Ark model
+  identifiers, not credentials. A user may set `OPEN_CANVAS_ARK_IMAGE_MODEL`
+  or `OPEN_CANVAS_ARK_VIDEO_MODEL` to a model identifier or their own Ark
+  endpoint identifier; the selected identifier is persisted only as the
+  non-secret resolved route.
+- Image capability: text-to-image and project-local PNG/JPEG/WebP reference
+  images; one PNG output; `1:1`, `16:9`, or `9:16`; exact local presets
+  `2048x2048`, `2048x1152`, and `1152x2048`; audio `never`. The adapter
+  requests `b64_json` and keeps its bytes in memory until Core writes the
+  project-local asset.
+- Video capability: Seedance 2.5 text-to-video or one project-local
+  PNG/JPEG/WebP first-frame input; MP4 output; `1:1`, `16:9`, or `9:16`; 4
+  through 30 second durations; audio `optional`. The current MVP deliberately
+  does not expose 2.5's multi-reference, edit, or extend modes yet. The adapter
+  creates an asynchronous Ark task, persists only the task ID, polls it, and
+  retrieves the completed HTTPS artifact into the local project store. The
+  temporary result URL is never persisted.
+- Contract mapping: all calls use the public Ark HTTP API directly from the
+  local CLI. There is no SDK dependency, product-specific routing dependency,
+  or credential migration. An image response succeeds immediately; a video
+  response follows the normalized queued/running/succeeded lifecycle.
+
+Official evidence: Ark documents its Bearer `ARK_API_KEY` authentication,
+Seedream image endpoint and Base64/image-input response modes in the
+[ImageGenerations API](https://api.volcengine.com/api-docs/view?action=ImageGenerations&serviceCode=ark&version=2024-01-01),
+and its asynchronous video submission, task ID, and result retrieval in the
+[CreateContentsGenerationsTasks API](https://api.volcengine.com/api-docs/view?action=CreateContentsGenerationsTasks&serviceCode=ark&version=2024-01-01)
+and [GetContentsGenerationsTask API](https://api.volcengine.com/api-docs/view?action=GetContentsGenerationsTask&serviceCode=ark&version=2024-01-01). The
+[Seedance 2.5 tutorial](https://docs.volcengine.com/docs/82379/2607688) defines
+the 2.5 model ID, task modes, and supported duration range.
+
 ### `openai`
 
 - Credential: `OPENAI_API_KEY`.
@@ -287,7 +361,7 @@ supports the required behavior.
   image-reference work uses the multipart edits endpoint. Both materialize
   returned Base64 image bytes.
 - Current manifest: text and image input; PNG, JPEG, or WebP output; common
-  Studio presets `1024x1024`, `1792x1008`, and `1008x1792`; aspect ratios
+  Studio presets `2048x2048`, `2048x1152`, and `1152x2048`; aspect ratios
   `1:1`, `16:9`, and `9:16`; audio `never`; registry priority `100`. In
   addition to those presets, routing accepts any `gpt-image-2` resolution with
   both edges divisible by `16`, max edge `3840`, aspect ratio at most `3:1`,
@@ -401,8 +475,27 @@ The current implementation uses three focused units:
 
 1. Pure capability matcher and router in Core, with no environment access.
 2. CLI-only local environment resolver and local asset-byte loader.
-3. Adapter registry containing OpenAI Image, Gemini Omni Flash, and the
-   explicit-only deterministic mock.
+3. Adapter registry containing Ark Image/Video, OpenAI Image, Gemini Omni Flash,
+   OpenAI Speech, and the explicit-only deterministic mock.
 
 Provider SDK response objects must not cross this boundary. The canvas schema,
 CLI, and preview consume only normalized route, job, error, and asset records.
+
+## Speech extension (2026-09-15)
+
+`openai-speech` implements official `POST /v1/audio/speech`. Its default model
+is `gpt-4o-mini-tts`, credential environment variable is `OPENAI_API_KEY`, and
+configuration uses `models.audio`. Supported outputs are WAV (`audio/wav`,
+default) and MP3 (`audio/mpeg`); voice defaults to `coral`, speed to 1. The
+adapter validates voice, speed and text length, rejects media references, and
+uses a bounded transport timeout with sanitized errors. Response bytes remain
+process-local until the CLI materializes the local content-addressed asset.
+
+Speech is synchronous, with no provider retrieval handle. The CLI persists a
+submission marker before sending. If interrupted after that boundary, resume
+reports unavailable synchronous results rather than sending another paid
+request automatically. A deliberate new attempt may incur another charge.
+No real speech provider was contacted by the unit tests or local browser QA.
+
+Protocol evidence: [Create speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)
+and [Text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech).
