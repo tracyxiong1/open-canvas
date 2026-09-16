@@ -15,8 +15,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Map<string, string | boolean>();
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]!;
-    if (value === "-h") {
-      flags.set("help", true);
+    if (value === "-h" || value === "-v") {
+      flags.set(value === "-h" ? "help" : "version", true);
       continue;
     }
     if (!value.startsWith("--")) {
@@ -24,7 +24,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const name = value.slice(2);
-    if (name === "no-open" || name === "help") {
+    if (name === "no-open" || name === "help" || name === "version") {
       flags.set(name, true);
       continue;
     }

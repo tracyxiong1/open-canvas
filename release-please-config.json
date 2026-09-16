@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "06f76f0054ea0ff96c9e06447ebb82b651c2bbe1",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "open-canvas-cli",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "bump-patch-for-minor-pre-major": true,
+      "extra-files": [
+        "packages/cli/package.json",
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages['packages/cli'].version"
+        }
+      ]
+    }
+  }
+}

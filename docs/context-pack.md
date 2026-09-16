@@ -64,13 +64,21 @@ performs that explicit operation and leaves unrelated nodes and drafts intact.
 ## Development and delivery
 
 - Codex operates the project directly from the local workspace; the Devbox remains an optional remote development environment.
-- GitHub repository: `tracyxiong1/open-canvas` (private).
+- GitHub repository: `tracyxiong1/open-canvas` (public).
 - `main` is the integrated baseline. Feature work is delivered through focused branches and Draft PRs.
 - The shared command core is the only mutation implementation used by the CLI and browser studio.
-- The Codex creation skill source is `skills/open-canvas`. Install or link that
-  folder under the local Codex skills directory to make it discoverable; the
+- The public npm package `open-canvas-cli` bundles Core and the canonical
+  `skills/open-canvas` source, and exposes the `open-canvas` command.
+  Build an installable tarball with `npm run pack:cli`; it works without
+  a source checkout. After a global npm install, `open-canvas skill install`
+  installs the Skill under the local Codex skills directory (or `--dir`).
+  Source developers can still link the canonical Skill folder; the
   skill uses the same CLI and project document rather than a parallel data
   model.
+- GitHub Actions validates pull requests and `main` on Node.js 22.16 and 24.
+  Release Please manages one repository-wide version and changelog; merging
+  its release PR publishes only `open-canvas-cli` through npm trusted
+  publishing. The trusted workflow is `.github/workflows/release-please.yml`.
 
 ## Visual evidence
 
