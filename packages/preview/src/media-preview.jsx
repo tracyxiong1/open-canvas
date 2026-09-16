@@ -12,7 +12,11 @@ export function isPlayableVideoPreview(asset) {
   return !STATIC_IMAGE_PREVIEW_PATTERN.test(asset.previewUrl);
 }
 
-export function AssetPreview({ asset, alt = "", className, controls = false }) {
+export function AssetPreview({ asset, alt = "", className, controls = false, autoPlay = false }) {
+  if (asset?.kind === "audio" || asset?.mediaType?.startsWith("audio/")) {
+    return <audio className={className} src={asset.previewUrl} aria-label={alt || "音频预览"}
+      controls={controls} autoPlay={autoPlay} preload="metadata" />;
+  }
   if (isPlayableVideoPreview(asset)) {
     return (
       <video
@@ -21,6 +25,7 @@ export function AssetPreview({ asset, alt = "", className, controls = false }) {
         aria-label={alt || undefined}
         aria-hidden={alt ? undefined : "true"}
         controls={controls}
+        autoPlay={autoPlay}
         muted={controls ? undefined : true}
         playsInline
         preload="metadata"

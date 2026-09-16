@@ -13,6 +13,7 @@ import {
 import {
   buildAnchoredGraphViewport,
   buildAutoLayoutPositions,
+  composerHorizontalOffset,
   connectionRejectionMessage,
   connectionToGraphMutation,
   findOpenNodePosition,
@@ -22,6 +23,7 @@ import {
   HANDLE_IDS,
   isLayoutGroupNode,
   resolveCompositionShotOrder,
+  shouldSyncFlowProjection,
   shouldSyncFlowSelection,
   toFlowEdges,
   toFlowNodes,
@@ -32,6 +34,12 @@ function activeDraft() {
 }
 
 describe("React Flow projection", () => {
+  it("keeps inline controls inside desktop and compact viewports without moving nodes", () => {
+    expect(composerHorizontalOffset(300, 660, 0, 1280)).toBe(0);
+    expect(composerHorizontalOffset(900, 660, 0, 1280)).toBe(-292);
+    expect(composerHorizontalOffset(-80, 366, 0, 390)).toBe(92);
+    expect(composerHorizontalOffset(700, 366, 0, 390)).toBe(-688);
+  });
   it("anchors a wide graph at the compact reference origin without changing document coordinates", () => {
     const viewport = buildAnchoredGraphViewport({
       nodes: [
@@ -76,6 +84,13 @@ describe("React Flow projection", () => {
       selected: true,
       data: { primarySelected: true },
     });
+  });
+
+  it("defers a canonical node projection until a local drag has finished", () => {
+    expect(shouldSyncFlowProjection()).toBe(true);
+    expect(shouldSyncFlowProjection({ isNodeDragActive: true })).toBe(false);
+    expect(shouldSyncFlowProjection({ hasArrangementPreview: true })).toBe(false);
+    expect(shouldSyncFlowProjection({ hasArrangementPreview: true, isNodeDragActive: true })).toBe(false);
   });
 
   it("projects a durable layout group behind its members with derived bounds", () => {

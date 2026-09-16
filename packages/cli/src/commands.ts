@@ -5,9 +5,8 @@ import { dirname, extname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
 import {
-  GeminiOmniVideoAdapter,
   MockProviderAdapter,
-  OpenAIImageAdapter,
+  OpenAISpeechAdapter,
   ProviderAdapterError,
   addNode,
   applyProviderSnapshot,
@@ -25,6 +24,9 @@ import {
   moveNodes,
   isLayoutGroup,
   resumeGeneration,
+  resetNodeGeneration,
+  selectNodeOutput,
+  effectiveOutputAssetIds,
   registerImportedAsset,
   saveProjectAtomic,
   selectProviderRoute,
@@ -47,6 +49,12 @@ import {
 
 import { CliUsageError, numberFlag, optionalFlag, requiredFlag, type ParsedArgs } from "./args.js";
 import { startPreviewBridge } from "./preview-bridge.js";
+import {
+  createConfiguredProviderAdapters,
+  loadProviderConfiguration,
+  withPersistedRouteModel,
+  type ProviderConfiguration,
+} from "./provider-config.js";
 
 function draftFor(document: CanvasDocument, draftId?: string): Draft {
   const id = draftId ?? document.activeDraftId;
@@ -137,11 +145,15 @@ function explicitMockRoute(node: Node, route?: ResolvedRoute): boolean {
   return override?.providerId === "mock" || override?.modelId?.startsWith("mock-") === true;
 }
 
-function providerAdaptersFor(node: Node, route?: ResolvedRoute): ProviderAdapter[] {
-  const adapters: ProviderAdapter[] = [
-    new OpenAIImageAdapter(),
-    new GeminiOmniVideoAdapter(),
-  ];
+function providerAdaptersFor(
+  node: Node,
+  configurations: readonly ProviderConfiguration[],
+  route?: ResolvedRoute,
+): ProviderAdapter[] {
+  const configured = route !== undefined && node.spec.kind === "shot"
+    ? withPersistedRouteModel(configurations, route, node.spec.mediaKind)
+    : configurations;
+  const adapters = createConfiguredProviderAdapters(configured);
   if (explicitMockRoute(node, route)) adapters.push(new MockProviderAdapter());
   return adapters;
 }
@@ -156,11 +168,15 @@ function configuredProviderAvailability(adapters: readonly ProviderAdapter[]) {
   };
 }
 
-function resolveRouteForNode(request: GenerationRequest, node: Node): ResolvedRoute {
+function resolveRouteForNode(
+  request: GenerationRequest,
+  node: Node,
+  configurations: readonly ProviderConfiguration[],
+): ResolvedRoute {
   if (node.spec.kind !== "shot") {
     throw new CliUsageError("Composition rendering is not implemented; generate the underlying shot nodes first");
   }
-  const adapters = providerAdaptersFor(node);
+  const adapters = providerAdaptersFor(node, configurations);
   return selectProviderRoute(adapters, {
     request,
     ...(node.spec.routing?.promptOverride === undefined ? {} : { promptOverride: node.spec.routing.promptOverride }),
@@ -179,8 +195,12 @@ function providerContext(adapter: ProviderAdapter): ProviderExecutionContext {
   return { credential: createProviderCredential(credential) };
 }
 
-function providerRuntimeFor(route: ResolvedRoute, node: Node): ProviderRuntime {
-  const adapters = providerAdaptersFor(node, route);
+function providerRuntimeFor(
+  route: ResolvedRoute,
+  node: Node,
+  configurations: readonly ProviderConfiguration[],
+): ProviderRuntime {
+  const adapters = providerAdaptersFor(node, configurations, route);
   const adapter = adapters.find(
     (candidate) =>
       candidate.manifest.providerId === route.providerId
@@ -266,12 +286,18 @@ function inferredMediaType(filePath: string): string | undefined {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".mov": "video/quicktime",
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
   }[extension];
 }
 
-function importedAssetKind(mediaType: string, requestedKind?: string): "image" | "video" {
+function importedAssetKind(mediaType: string, requestedKind?: string): "image" | "video" | "audio" {
   if (requestedKind !== undefined) {
-    if (requestedKind !== "image" && requestedKind !== "video") {
+    if (requestedKind !== "image" && requestedKind !== "video" && requestedKind !== "audio") {
       throw new CliUsageError(`Invalid asset kind: ${requestedKind}`);
     }
     if (!mediaType.startsWith(`${requestedKind}/`)) {
@@ -281,7 +307,23 @@ function importedAssetKind(mediaType: string, requestedKind?: string): "image" |
   }
   if (mediaType.startsWith("image/")) return "image";
   if (mediaType.startsWith("video/")) return "video";
-  throw new CliUsageError("Cannot infer asset kind; pass --kind image or --kind video with a matching --media-type");
+  if (mediaType.startsWith("audio/")) return "audio";
+  throw new CliUsageError("Cannot infer asset kind; pass --kind image, video or audio with a matching --media-type");
+}
+
+type LocalMediaInput = {
+  bytes: Buffer;
+  mediaType: string;
+  kind: "image" | "video" | "audio";
+};
+
+async function readLocalMediaInput(args: ParsedArgs, emptyFileMessage: string): Promise<LocalMediaInput> {
+  const filePath = resolve(requiredFlag(args, "file"));
+  const bytes = await readFile(filePath);
+  if (bytes.length === 0) throw new CliUsageError(emptyFileMessage);
+  const mediaType = optionalFlag(args, "media-type") ?? inferredMediaType(filePath);
+  if (!mediaType) throw new CliUsageError("Cannot infer media type; pass --media-type");
+  return { bytes, mediaType, kind: importedAssetKind(mediaType, optionalFlag(args, "kind")) };
 }
 
 // `asset-library` remains readable in schema v1 for old documents, but new
@@ -319,8 +361,12 @@ function helpCommand() {
       "edge disconnect --project <directory> --edge <id>",
       "script expand --project <directory> --node <script-node-id> [--limit 1..8] [--prompt <script>]",
       "asset import --project <directory> --file <path>",
+      "result import --project <directory> --node <id> --file <path> [--provider <id> --model <id>]",
+      "result select --project <directory> --node <id> --asset <asset-id>",
+      "node add --project <directory> --kind shot --media-kind audio --title <title> --prompt <speech-text> [--voice coral] [--speed 1] [--media-type audio/wav|audio/mpeg]",
       "draft copy --project <directory> --title <title> [--source <id>]",
-      "generate --project <directory> --node <id>",
+      "provider list [--provider-config <path>]",
+      "generate --project <directory> --node <id> [--provider-config <path>]",
       "open --project <directory> [--no-open]",
       "export --project <directory> --draft <id> --output <path> [--node <id>]",
     ],
@@ -335,11 +381,40 @@ function helpCommand() {
     generation: {
       default: "Selects an eligible configured local BYOK route; it never silently falls back to mock.",
       configuredRoutes: [
-        "OPENAI_API_KEY for openai / gpt-image-2 image generation",
-        "GEMINI_API_KEY for google-gemini / gemini-omni-flash-preview video generation",
+        "Use --provider-config <path> or OPEN_CANVAS_PROVIDER_CONFIG to select non-secret provider instances, models/endpoints, priority, and credential environment-variable names.",
+        "Without a config file, the legacy defaults are volcengine-ark (ARK_API_KEY, optional OPEN_CANVAS_ARK_IMAGE_MODEL / OPEN_CANVAS_ARK_VIDEO_MODEL), openai (OPENAI_API_KEY), and google-gemini (GEMINI_API_KEY).",
+        "provider list exposes only safe provider metadata and whether each local credential environment variable is set.",
       ],
       deterministicDemo: "Use an explicit mock route only for local demos or tests.",
     },
+  };
+}
+
+async function providerListCommand(args: ParsedArgs): Promise<unknown> {
+  const configPath = optionalFlag(args, "provider-config");
+  const loaded = await loadProviderConfiguration(configPath === undefined ? {} : { path: configPath });
+  const adapters = createConfiguredProviderAdapters(loaded.providers);
+  return {
+    source: loaded.source,
+    ...(loaded.path === undefined ? {} : { configPath: loaded.path }),
+    providers: adapters.map((adapter) => ({
+      id: adapter.manifest.providerId,
+      ...(adapter.manifest.credentialEnv === undefined ? {} : {
+        credentialEnv: adapter.manifest.credentialEnv,
+        configured: (process.env[adapter.manifest.credentialEnv]?.trim() ?? "") !== "",
+      }),
+      capabilities: adapter.manifest.capabilities.map((capability) => ({
+        modelId: capability.modelId,
+        kind: capability.kind,
+        inputKinds: [...capability.inputKinds],
+        ...(capability.maxInputs === undefined ? {} : { maxInputs: capability.maxInputs }),
+        outputMediaTypes: [...capability.outputMediaTypes],
+        ...(capability.sizes === undefined ? {} : { sizes: capability.sizes.map((size) => ({ ...size })) }),
+        ...(capability.durationsSeconds === undefined ? {} : { durationsSeconds: [...capability.durationsSeconds] }),
+        ...(capability.maxOutputs === undefined ? {} : { maxOutputs: capability.maxOutputs }),
+        priority: capability.registryPriority,
+      })),
+    })),
   };
 }
 
@@ -415,12 +490,12 @@ function shotSpecFromArgs(args: ParsedArgs, current?: ShotSpec): ShotSpec {
     ...(aiChoice === undefined ? {} : { aiChoice }),
   };
   const mediaKind = optionalFlag(args, "media-kind") ?? current?.mediaKind ?? "video";
-  if (mediaKind !== "image" && mediaKind !== "video") throw new CliUsageError(`Invalid media kind: ${mediaKind}`);
+  if (mediaKind !== "image" && mediaKind !== "video" && mediaKind !== "audio") throw new CliUsageError(`Invalid media kind: ${mediaKind}`);
   const requestedCount = optionalNumber(args, "count");
   if (requestedCount !== undefined && (!Number.isSafeInteger(requestedCount) || requestedCount < 1 || requestedCount > 4)) {
     throw new CliUsageError("--count must be an integer from 1 to 4");
   }
-  if (mediaKind === "video" && requestedCount !== undefined) {
+  if (mediaKind !== "image" && requestedCount !== undefined) {
     throw new CliUsageError("--count is currently supported only for image shots");
   }
   const aspectRatio = optionalFlag(args, "aspect-ratio") ?? current?.requirements?.aspectRatio;
@@ -432,7 +507,11 @@ function shotSpecFromArgs(args: ParsedArgs, current?: ShotSpec): ShotSpec {
   const durationSeconds = optionalNumber(args, "duration-seconds") ?? current?.requirements?.durationSeconds;
   const audio = optionalFlag(args, "audio") ?? current?.requirements?.audio;
   const mediaType = optionalFlag(args, "media-type") ?? current?.requirements?.mediaType;
+  const voice = optionalFlag(args, "voice") ?? current?.requirements?.voice;
+  const speed = optionalNumber(args, "speed") ?? current?.requirements?.speed;
   const requirements = {
+    ...(voice === undefined ? {} : { voice }),
+    ...(speed === undefined ? {} : { speed }),
     ...(aspectRatio === undefined ? {} : { aspectRatio: aspectRatio as "16:9" | "9:16" | "1:1" }),
     ...(width === undefined ? {} : { width }),
     ...(height === undefined ? {} : { height }),
@@ -471,6 +550,9 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
   if (command === "edge" && subcommand === "disconnect") return disconnectCommand(args);
   if (command === "script" && subcommand === "expand") return expandScriptCommand(args);
   if (command === "asset" && subcommand === "import") return importAssetCommand(args);
+  if (command === "result" && subcommand === "import") return importGenerationResultCommand(args);
+  if (command === "result" && subcommand === "select") return selectResultCommand(args);
+  if (command === "provider" && subcommand === "list") return providerListCommand(args);
   if (command === "draft" && subcommand === "copy") return copyDraftCommand(args);
   if (command === "generate") return generateCommand(args);
   if (command === "status") return statusCommand(args);
@@ -478,7 +560,7 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
   if (command === "preview-bridge") return previewBridgeCommand(args);
   if (command === "preview" || command === "open") return previewCommand(args);
   if (command === "export") return exportCommand(args);
-  throw new CliUsageError("Unknown command. Use init, context, node add/update/delete/move/copy, group create, edge connect/disconnect, script expand, asset import, draft copy, generate, status, open/preview, or export.");
+  throw new CliUsageError("Unknown command. Use init, context, node add/update/delete/move/copy, group create, edge connect/disconnect, script expand, asset import, result import, provider list, draft copy, generate, status, open/preview, or export.");
 }
 
 async function initCommand(args: ParsedArgs): Promise<unknown> {
@@ -772,12 +854,7 @@ async function expandScriptCommand(args: ParsedArgs): Promise<unknown> {
 
 async function importAssetCommand(args: ParsedArgs): Promise<unknown> {
   const projectDirectory = resolve(requiredFlag(args, "project"));
-  const filePath = resolve(requiredFlag(args, "file"));
-  const bytes = await readFile(filePath);
-  if (bytes.length === 0) throw new CliUsageError("Cannot import an empty file");
-  const mediaType = optionalFlag(args, "media-type") ?? inferredMediaType(filePath);
-  if (!mediaType) throw new CliUsageError("Cannot infer media type; pass --media-type");
-  const kind = importedAssetKind(mediaType, optionalFlag(args, "kind"));
+  const { bytes, mediaType, kind } = await readLocalMediaInput(args, "Cannot import an empty file");
   const before = await loadProject(projectDirectory);
   const checksumSha256 = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
   const registered = registerImportedAsset(before, {
@@ -800,6 +877,88 @@ async function importAssetCommand(args: ParsedArgs): Promise<unknown> {
   };
 }
 
+/**
+ * Materialize a media file already produced by a local agent or tool as the
+ * successful output of a canvas node. This is deliberately separate from
+ * `asset import`: the latter creates a reusable project-local input, while
+ * this command creates a traceable generation job and output asset.
+ */
+async function importGenerationResultCommand(args: ParsedArgs): Promise<unknown> {
+  const projectDirectory = resolve(requiredFlag(args, "project"));
+  const { bytes, mediaType, kind } = await readLocalMediaInput(args, "Cannot import an empty generation result");
+
+  const before = await loadProject(projectDirectory);
+  const draft = draftFor(before, optionalFlag(args, "draft"));
+  const nodeId = requiredFlag(args, "node");
+  const node = draft.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) throw new CliUsageError(`Unknown node: ${nodeId}`);
+  if (node.execution.status !== "dirty" && node.execution.status !== "failed") {
+    throw new CliUsageError("result import requires a dirty or failed node");
+  }
+  if (node.spec.kind === "composition" && (node.spec.role ?? "composition") !== "composition") {
+    throw new CliUsageError("result import cannot target a context node");
+  }
+  if (isLayoutGroup(node)) throw new CliUsageError("result import cannot target a layout group");
+
+  const expectedMediaType = node.spec.kind === "shot"
+    ? node.spec.requirements?.mediaType ?? (node.spec.mediaKind === "image" ? "image/png" : node.spec.mediaKind === "audio" ? "audio/wav" : "video/mp4")
+    : node.spec.mediaType;
+  const expectedKind = node.spec.kind === "shot" ? node.spec.mediaKind : importedAssetKind(expectedMediaType);
+  const expectedOutputCount = node.spec.kind === "shot" ? node.spec.requirements?.count ?? 1 : 1;
+  if (expectedOutputCount !== 1) {
+    throw new CliUsageError("result import supports exactly one output; use generate for multi-candidate image jobs");
+  }
+  if (kind !== expectedKind || (kind !== "audio" && mediaType !== expectedMediaType)) {
+    throw new CliUsageError(`Imported result must be ${expectedKind}/${expectedMediaType}`);
+  }
+
+  const providerId = optionalFlag(args, "provider") ?? "local-import";
+  const modelId = optionalFlag(args, "model") ?? "external-media-v1";
+  const route: ResolvedRoute = {
+    providerId,
+    modelId,
+    selectionSource: optionalFlag(args, "provider") === undefined && optionalFlag(args, "model") === undefined
+      ? "registry_default"
+      : "prompt_override",
+  };
+  const prepared = kind === "audio" && mediaType !== expectedMediaType && node.spec.kind === "shot"
+    ? updateNode(before, {
+      draftId: draft.id, nodeId, spec: { ...node.spec, requirements: { ...node.spec.requirements, mediaType } },
+      expectedProjectRevision: numberFlag(args, "expected-project-revision", before.revision),
+      expectedDraftRevision: numberFlag(args, "expected-draft-revision", draft.revision),
+    }) : before;
+  const started = startGeneration(prepared, {
+    draftId: draft.id,
+    nodeId,
+    expectedProjectRevision: prepared === before ? numberFlag(args, "expected-project-revision", before.revision) : prepared.revision,
+    expectedDraftRevision: prepared === before ? numberFlag(args, "expected-draft-revision", draft.revision) : draftFor(prepared, draft.id).revision,
+    resolveRoute: () => route,
+  });
+  const providerJobId = `local:${createHash("sha256").update(bytes).digest("hex")}`;
+  const completed = completeGeneration(started.document, {
+    draftId: draft.id,
+    jobId: started.request.jobId,
+    providerJobId,
+    artifact: { kind, mediaType, bytes },
+  });
+  const completedNode = draftFor(completed, draft.id).nodes.find((candidate) => candidate.id === nodeId)!;
+  const assetId = completedNode.execution.outputAssetIds[0]!;
+  const asset = completed.assets.find((candidate) => candidate.id === assetId)!;
+  await writeAssetBytes(projectDirectory, asset.path, bytes);
+  await saveMutation(projectDirectory, before, completed);
+  return {
+    draftId: draft.id,
+    nodeId,
+    jobId: started.request.jobId,
+    status: "succeeded",
+    route,
+    assetId,
+    assetPath: asset.path,
+    revision: completed.revision,
+    draftRevision: draftFor(completed, draft.id).revision,
+  };
+}
+
 async function copyDraftCommand(args: ParsedArgs): Promise<unknown> {
   const projectDirectory = resolve(requiredFlag(args, "project"));
   const before = await loadProject(projectDirectory);
@@ -812,9 +971,24 @@ async function copyDraftCommand(args: ParsedArgs): Promise<unknown> {
   return { draftId: after.activeDraftId, sourceDraftId: optionalFlag(args, "source") ?? before.activeDraftId, revision: after.revision };
 }
 
+async function selectResultCommand(args: ParsedArgs): Promise<unknown> {
+  const directory = resolve(requiredFlag(args, "project"));
+  const before = await loadProject(directory);
+  const draft = draftFor(before, optionalFlag(args, "draft"));
+  const nodeId = requiredFlag(args, "node");
+  const assetId = requiredFlag(args, "asset");
+  const after = selectNodeOutput(before, { draftId: draft.id, nodeId, assetId,
+    expectedProjectRevision: numberFlag(args, "expected-project-revision", before.revision),
+    expectedDraftRevision: numberFlag(args, "expected-draft-revision", draft.revision) });
+  await saveMutation(directory, before, after);
+  return { nodeId, assetId, revision: after.revision };
+}
+
 async function generateCommand(args: ParsedArgs): Promise<unknown> {
+  const configPath = optionalFlag(args, "provider-config");
+  const providerConfiguration = await loadProviderConfiguration(configPath === undefined ? {} : { path: configPath });
   const projectDirectory = resolve(requiredFlag(args, "project"));
-  const initial = await loadProject(projectDirectory);
+  let initial = await loadProject(projectDirectory);
   const draft = draftFor(initial, optionalFlag(args, "draft"));
   const nodeId = requiredFlag(args, "node");
   const node = draft.nodes.find((candidate) => candidate.id === nodeId);
@@ -824,22 +998,32 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
   if (expectedProjectRevision !== initial.revision || expectedDraftRevision !== draft.revision) {
     throw new CliUsageError("Generation revision check failed");
   }
+  if (node.execution.status === "succeeded") {
+    const reset = resetNodeGeneration(initial, { draftId: draft.id, nodeId, expectedProjectRevision, expectedDraftRevision });
+    // Check routing before invalidating a usable output (e.g. when BYOK is absent).
+    const target = draftFor(reset, draft.id).nodes.find((candidate) => candidate.id === nodeId)!;
+    startGeneration(reset, { draftId: draft.id, nodeId, expectedProjectRevision: reset.revision,
+      expectedDraftRevision: draftFor(reset, draft.id).revision,
+      resolveRoute: (request) => resolveRouteForNode(request, target, providerConfiguration.providers) });
+    await saveMutation(projectDirectory, initial, reset);
+    initial = reset;
+  }
   const resuming = node.execution.status === "queued" || node.execution.status === "running";
   const operation = resuming
     ? resumeGeneration(initial, { draftId: draft.id, nodeId })
-    : startGeneration(initial, {
+      : startGeneration(initial, {
         draftId: draft.id,
         nodeId,
-        expectedProjectRevision,
-        expectedDraftRevision,
-        resolveRoute: resolveRouteForNode,
+        expectedProjectRevision: initial.revision,
+        expectedDraftRevision: draftFor(initial, draft.id).revision,
+        resolveRoute: (request, targetNode) => resolveRouteForNode(request, targetNode, providerConfiguration.providers),
       });
   let document = operation.document;
   if (!resuming) await saveMutation(projectDirectory, initial, document);
   const jobId = operation.request.jobId;
   let providerJobId = draftFor(document, draft.id).jobs.find((candidate) => candidate.id === jobId)?.providerJobId;
   try {
-    const runtime = providerRuntimeFor(operation.route, node);
+    const runtime = providerRuntimeFor(operation.route, node, providerConfiguration.providers);
     const inputBytes = await localInputBytes(projectDirectory, document, operation.request);
     const context: ProviderExecutionContext = {
       ...runtime.context,
@@ -906,6 +1090,12 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
 
     const resumableJob = draftFor(document, draft.id).jobs.find((candidate) => candidate.id === jobId);
     const resubmit = providerJobId === undefined || runtime.adapter.manifest.providerId === "mock";
+    // Speech has no remote retrieval endpoint. Record the submission boundary
+    // first so a restart never silently sends the same paid speech request again.
+    if (resubmit && runtime.adapter instanceof OpenAISpeechAdapter) {
+      providerJobId = "openai-speech:" + jobId;
+      await persist({ providerJobId, status: "queued", progress: 0 });
+    }
     let snapshot: ProviderSnapshot;
     if (resubmit) {
       snapshot = await runtime.adapter.submit(operation.request, operation.route.modelId, context);
@@ -1000,6 +1190,7 @@ function semanticContextNode(draft: Draft, node: Node): Record<string, unknown> 
       status: node.execution.status,
       ...(node.execution.activeJobId === undefined ? {} : { activeJobId: node.execution.activeJobId }),
       outputAssetIds: [...node.execution.outputAssetIds],
+      ...(node.execution.selectedOutputAssetId === undefined ? {} : { selectedOutputAssetId: node.execution.selectedOutputAssetId }),
     },
     upstream: contextNodeConnections(draft, node, "upstream"),
     downstream: contextNodeConnections(draft, node, "downstream"),
@@ -1236,10 +1427,10 @@ async function exportCommand(args: ParsedArgs): Promise<unknown> {
   const node = nodeId
     ? draft.nodes.find((candidate) => candidate.id === nodeId)
     : draft.nodes.find((candidate) => candidate.spec.kind === "composition" && candidate.execution.status === "succeeded");
-  if (!node || node.execution.status !== "succeeded" || node.execution.outputAssetIds.length === 0) {
+  if (!node || effectiveOutputAssetIds(node).length === 0) {
     throw new CliUsageError("Selected draft node has no successful output to export");
   }
-  const asset = document.assets.find((candidate) => candidate.id === node.execution.outputAssetIds[0]);
+  const asset = document.assets.find((candidate) => candidate.id === effectiveOutputAssetIds(node)[0]);
   if (!asset) throw new Error("Successful node references an unknown asset");
   const source = join(projectDirectory, asset.path);
   const bytes = await readFile(source);

@@ -208,6 +208,17 @@ export function shouldSyncFlowSelection(flowNodes, isMarqueeSelection = false) {
   return isMarqueeSelection || flowNodesToSelectionIds(flowNodes).length > 1;
 }
 
+/**
+ * React Flow owns card coordinates during a pointer drag, while the project
+ * document remains the durable source of truth once that gesture finishes.
+ * Re-applying a document projection in the middle would overwrite the
+ * in-flight position with the last persisted coordinate and make the card
+ * visibly jump back and forth.
+ */
+export function shouldSyncFlowProjection({ hasArrangementPreview = false, isNodeDragActive = false } = {}) {
+  return !hasArrangementPreview && !isNodeDragActive;
+}
+
 export function toFlowEdges(draft, selectedNodeId = null, selectedEdgeIds = []) {
   const nodesById = new Map(draft.nodes.map((node) => [node.id, node]));
   const selectedEdgeIdSet = new Set(selectedEdgeIds);
@@ -414,6 +425,12 @@ function pathExists(edges, kind, startNodeId, goalNodeId) {
     pending.push(...(outgoing.get(nodeId) ?? []));
   }
   return false;
+}
+
+export function composerHorizontalOffset(left, width, viewportLeft, viewportWidth, margin = 12) {
+  const minLeft = viewportLeft + margin;
+  const maxLeft = Math.max(minLeft, viewportLeft + viewportWidth - width - margin);
+  return Math.min(maxLeft, Math.max(minLeft, left)) - left;
 }
 
 export function connectionToGraphMutation(draft, connection) {

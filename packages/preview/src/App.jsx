@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addNode,
+  selectNodeOutput,
+  effectiveOutputAssetIds,
+  resetNodeGeneration,
   connectNodes,
   createGroup,
   deleteNode,
@@ -190,6 +193,8 @@ function ProjectHeader({
 }
 
 function AssetDialog({ preview, onClose }) {
+  const [downloadError, setDownloadError] = useState("");
+  useEffect(() => setDownloadError(""), [preview]);
   useEffect(() => {
     if (!preview) return undefined;
     const onKeyDown = (event) => {
@@ -201,7 +206,21 @@ function AssetDialog({ preview, onClose }) {
 
   if (!preview) return null;
 
-  const playableVideo = isPlayableVideoPreview(preview.asset);
+  const playableVideo = isPlayableVideoPreview(preview.asset) || preview.asset.kind === "audio";
+  const download = async () => {
+    try {
+      const response = await fetch(preview.asset.previewUrl);
+      if (!response.ok) throw new Error("download failed");
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      const extension = { "audio/mpeg": "mp3", "audio/wav": "wav", "audio/mp4": "m4a", "image/jpeg": "jpg" }[preview.asset.mediaType]
+        ?? preview.asset.mediaType.split("/")[1];
+      anchor.href = url;
+      anchor.download = `${preview.asset.id}.${extension}`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch { setDownloadError("下载失败，请检查本地素材是否仍可访问。"); }
+  };
 
   return (
     <dialog className="asset-dialog" open aria-labelledby="asset-dialog-title">
@@ -212,13 +231,16 @@ function AssetDialog({ preview, onClose }) {
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭素材预览"><X aria-hidden="true" /></button>
         </header>
         <div className="asset-stage">
-          <AssetPreview asset={preview.asset} alt={`${preview.node.title} 的生成画面`} controls={playableVideo} />
+          <AssetPreview asset={preview.asset} alt={`${preview.node.title} 的生成画面`} controls={playableVideo} autoPlay={playableVideo} />
           {!playableVideo ? <span className="preview-still-label">预览帧</span> : null}
         </div>
         <footer>
           <div><span>类型</span><strong>{preview.asset.mediaType}</strong></div>
           <div><span>素材 ID</span><strong>{truncateIdentifier(preview.asset.id)}</strong></div>
           <div><span>大小</span><strong>{Math.max(1, Math.round(preview.asset.byteLength / 1024))} KB</strong></div>
+          <button type="button" onClick={download}>下载素材</button>
+          {preview.asset.kind === "audio" && preview.asset.origin?.kind === "job" && preview.node.route?.providerId !== "local-import" ? <span>{preview.node.route?.providerId === "mock" ? "本地测试音频（静音）" : "AI 合成声音"}</span> : null}
+          {downloadError ? <span role="alert">{downloadError}</span> : null}
         </footer>
       </section>
     </dialog>
@@ -616,26 +638,28 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       ...(contextPreset ? { role, prompt: contextPreset.prompt } : { role: "composition" }),
     } : {
       kind: "shot",
-      prompt: "描述这个镜头的主体、动作、环境与镜头语言。",
+      prompt: mediaKind === "audio" ? "输入需要朗读的文字。" : "描述这个镜头的主体、动作、环境与镜头语言。",
       mediaKind,
       inputAssetIds: [],
       requirements: {
+        ...(mediaKind === "audio" ? { voice: "coral", speed: 1, mediaType: "audio/wav" } : {
         aspectRatio: "16:9",
         ...(mediaKind === "image"
-          ? { width: 1792, height: 1008, audio: "forbidden" }
+          ? { width: 2048, height: 1152, audio: "forbidden" }
           // Do not invent a fixed video duration for a new node. The default
           // configured video route advertises no exact duration guarantee;
           // users may add an explicit duration in the node's output settings.
           : { audio: "either" }),
         mediaType: mediaKind === "image" ? "image/png" : "video/mp4",
+        }),
       },
     };
     const title = kind === "composition"
       ? `${contextPreset?.label ?? (isOutputComposition ? "合成输出" : "剪辑")} ${count}`
-      : `${mediaKind === "image" ? "图片" : "视频"} ${count}`;
+      : `${mediaKind === "image" ? "图片" : mediaKind === "audio" ? "音频" : "视频"} ${count}`;
     const addMessage = kind === "composition"
       ? `已新增${contextPreset?.label ?? (isOutputComposition ? "合成输出" : "剪辑")}节点`
-      : `已新增${mediaKind === "image" ? "图片" : "视频"}节点`;
+      : `已新增${mediaKind === "image" ? "图片" : mediaKind === "audio" ? "音频" : "视频"}节点`;
     runMutation(addMessage, (current) => addNode(current, {
       draftId,
       title,
@@ -796,6 +820,20 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
     });
   }, [draftId, runMutation]);
 
+  const handleSelectOutput = useCallback((nodeId, assetId) => {
+    runMutation("已选择节点结果，下游已标记为待生成；原始生成记录保持不变", (current) => selectNodeOutput(current, {
+      draftId, nodeId, assetId, expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }));
+  }, [draftId, runMutation]);
+
+  const handleResetGeneration = useCallback((nodeId) => {
+    runMutation("已准备重新生成，请从 Codex 或 CLI 执行生成", (current) => resetNodeGeneration(current, {
+      draftId, nodeId, expectedProjectRevision: current.revision,
+      expectedDraftRevision: findCanonicalDraft(current, draftId).revision,
+    }));
+  }, [draftId, runMutation]);
+
   const handleExpandScript = useCallback((nodeId, draftPrompt) => {
     const currentDraft = findCanonicalDraft(document, draftId);
     const currentScript = currentDraft.nodes.find((node) => node.id === nodeId);
@@ -840,7 +878,7 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       const currentDraft = findCanonicalDraft(current, draftId);
       const source = currentDraft.nodes.find((node) => node.id === sourceNodeId);
       if (!source || source.spec.kind !== "shot") throw new Error("只能从图像或视频镜头创建编辑变体");
-      const sourceAssetId = source.execution.outputAssetIds[0];
+      const sourceAssetId = effectiveOutputAssetIds(source)[0];
       if (!sourceAssetId || !current.assets.some((asset) => asset.id === sourceAssetId)) {
         throw new Error("请先生成该镜头，再创建编辑变体");
       }
@@ -927,6 +965,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         onUpdateReferenceAssets={handleUpdateReferenceAssets}
         onUpdateInputAssets={handleUpdateInputAssets}
         onUpdateRequirements={handleUpdateRequirements}
+        onSelectOutput={handleSelectOutput}
+        onResetGeneration={handleResetGeneration}
         onExpandScript={handleExpandScript}
         onCreateVariation={handleCreateVariation}
         onArrange={handleArrange}

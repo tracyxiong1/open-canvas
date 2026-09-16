@@ -6,8 +6,10 @@
 - Do not use reference-product names, logos, source code, private APIs, or hotlinked assets in the product.
 - The MVP consists of a Codex creation skill, a first-party CLI, and a standalone editable infinite-canvas studio.
 - Generation is BYOK. Never store or print API keys in source files, fixtures, issue comments, logs, or task-tracker configuration.
+- Treat a model integration as a user-configured provider instance: persist only its safe provider ID and resolved model ID, while credentials stay in a local environment variable.
 - Let the AI select providers and models by default. Preserve explicit prompt-level strategy overrides.
 - Ignore billing and commercial cost optimization in the MVP.
+- The local P0 has no global role, material, style, or history library. Reusable direction and local references are ordinary project-scoped canvas nodes; imported bytes stay in the local project store.
 
 ## Shared behavior
 
@@ -31,9 +33,12 @@
   wording remain excluded.
 - Selecting a canvas node must focus it in the viewport and open its inline
   composer; do not preselect a node on initial load.
-- Keep the complete creative-node palette available from the compact bottom
-  add menu (text, image, video, editing, directing, analysis, audio, script,
-  asset-reference, upload, and generation-history entry points).
+- The current creation palette contains only text, image, video, and audio.
+  Audio starts with text-to-speech, local import and playback; music generation,
+  voice cloning and timeline rendering are out of scope. Keep legacy context
+  and composition nodes readable and editable without exposing new palette entries.
+  Local file import belongs to the CLI or a node-level action. Result history
+  stays on its originating node, including explicit selection for downstream use.
 
 ## Delivery
 

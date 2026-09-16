@@ -11,7 +11,6 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
-  useNodesInitialized,
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
@@ -51,6 +50,7 @@ import {
   Mountains,
   Pause,
   PencilSimple,
+  Play,
   Plus,
   Rectangle,
   Scissors,
@@ -80,6 +80,7 @@ import { getNodeSize } from "./project-document.js";
 import {
   buildAnchoredGraphViewport,
   buildAutoLayoutPositions,
+  composerHorizontalOffset,
   connectionRejectionMessage,
   connectionToGraphMutation,
   CANVAS_PRESENTATION_SCALE,
@@ -89,17 +90,20 @@ import {
   HANDLE_IDS,
   isLayoutGroupNode,
   resolveCompositionShotOrder,
+  shouldSyncFlowProjection,
   shouldSyncFlowSelection,
   toFlowEdges,
   toFlowNodes,
 } from "./react-flow-model.js";
-import { AssetPreview } from "./media-preview.jsx";
+import { AssetPreview, isPlayableVideoPreview } from "./media-preview.jsx";
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const FIT_VIEW_PADDING = 0.12;
 const DEFAULT_CANVAS_ZOOM = 0.5;
-const FIT_VIEW_BIAS = Object.freeze({ x: 10, y: -13.825 });
+// The top bar is fixed above the canvas. Keep fitted cards below it so the
+// first node's title and connection port remain reachable on compact screens.
+const FIT_VIEW_BIAS = Object.freeze({ x: 10, y: 38 });
 // A dense fan-out is framed like a working canvas, not a presentation slide.
 // Reference capture shows that the authored source has a different, deliberate
 // working origin on compact screens. The anchors stay in screen coordinates;
@@ -144,13 +148,12 @@ const LOCAL_REFERENCE_CONTEXT_ROLES = new Set([
   "audio",
 ]);
 
-// These are fast, legible presets for the local OpenAI adapter. The adapter
-// also accepts other valid dimensions under its published constraints, so
-// existing project documents such as 2048 × 1152 remain executable.
+// These common presets are supported by both of the current image adapters.
+// Existing documents keep their own explicit dimensions and remain executable.
 const IMAGE_OUTPUT_PRESETS = Object.freeze({
-  "16:9": Object.freeze({ width: 1792, height: 1008 }),
-  "9:16": Object.freeze({ width: 1008, height: 1792 }),
-  "1:1": Object.freeze({ width: 1024, height: 1024 }),
+  "16:9": Object.freeze({ width: 2048, height: 1152 }),
+  "9:16": Object.freeze({ width: 1152, height: 2048 }),
+  "1:1": Object.freeze({ width: 2048, height: 2048 }),
 });
 const IMAGE_ASPECT_RATIOS = Object.freeze(["16:9", "9:16", "1:1"]);
 const IMAGE_OUTPUT_COUNT_PRESETS = Object.freeze([1, 2, 4]);
@@ -191,7 +194,7 @@ function getSurfaceKind(node) {
     }
     return node.spec.role ?? "composition";
   }
-  return node.spec.mediaKind === "image" ? "image" : "video";
+  return node.spec.mediaKind;
 }
 
 function isContextNode(node) {
@@ -230,48 +233,55 @@ function NodeLabelIcon({ kind }) {
   return <VideoCamera weight="fill" aria-hidden="true" />;
 }
 
-function NodeMedia({ node, kind, onOpenPreview }) {
-  const asset = node.outputAssets.find((item) => item.previewUrl);
+function NodeMedia({ node, kind, onFocusNode, onOpenPreview }) {
+  const asset = node.selectedOutputAsset ?? node.outputAssets.find((item) => item.previewUrl);
   const operationNode = node.kind === "composition"
     && (node.spec.role ?? "composition") === "composition"
     && node.spec.mediaType?.startsWith("image/");
   const videoLikeOutput = kind === "video" || (kind === "output" && node.spec.mediaType?.startsWith("video/"));
   if (kind === "text") {
-    const textDirections = [
-      { label: "叙事文本", icon: Article },
-      { label: "镜头描述", icon: FilmSlate },
-      { label: "画面提示", icon: ImageSquare },
-      { label: "声音意图", icon: SpeakerHigh },
-    ];
+    const prompt = node.spec.prompt?.trim() || "尚未填写文本提示";
     return (
       <div className="node-media node-media-text" aria-label={`${node.title} ${node.statusMeta.label}`}>
-        <TextAlignLeft weight="regular" aria-hidden="true" />
-        <span className="node-text-directions" aria-hidden="true">
-          {textDirections.map(({ label, icon: Icon }) => (
-            <span className="node-text-direction" key={label}>
-              <Icon weight="fill" /><span>{label}</span>
-            </span>
-          ))}
-        </span>
+        <span className="node-text-heading"><TextAlignLeft weight="regular" aria-hidden="true" />文本提示</span>
+        <p className="node-text-prompt" title={prompt}>{prompt}</p>
       </div>
     );
   }
   if (asset && kind !== "text") {
+    const playableVideo = (videoLikeOutput && isPlayableVideoPreview(asset)) || kind === "audio";
+    const openVideoPreview = (event) => {
+      event.stopPropagation();
+      onFocusNode?.(node.id);
+      onOpenPreview(node, asset);
+    };
     return (
       <div className="node-media node-media-asset">
-        <AssetPreview asset={asset} alt={`${node.title} 的生成画面`} />
-        {videoLikeOutput ? <span className="node-play"><VideoCamera weight="fill" aria-hidden="true" /></span> : null}
-        <button
-          className="node-preview-button nodrag nopan"
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenPreview(node, asset);
-          }}
-          aria-label={`打开 ${node.title} 的素材预览`}
-        >
-          <CornersOut aria-hidden="true" />
-        </button>
+        {kind === "audio" ? <div className="node-audio-cover"><SpeakerHigh aria-hidden="true" /><span>{asset.origin?.kind === "job" && node.route?.providerId !== "local-import" ? node.route?.providerId === "mock" ? "本地测试音频（静音）" : "AI 合成声音" : "音频素材"}</span></div> : <AssetPreview asset={asset} alt={`${node.title} 的生成画面`} />}
+        {node.selectedOutputAsset ? <span className="node-selected-result-label">已选结果</span> : null}
+        {playableVideo ? (
+          <button
+            className="node-play node-play-button nodrag nopan nowheel"
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={openVideoPreview}
+            aria-label={`播放 ${node.title}`}
+          >
+            <Play weight="fill" aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            className="node-preview-button nodrag nopan"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenPreview(node, asset);
+            }}
+            aria-label={`打开 ${node.title} 的素材预览`}
+          >
+            <CornersOut aria-hidden="true" />
+          </button>
+        )}
       </div>
     );
   }
@@ -296,7 +306,7 @@ function NodeMedia({ node, kind, onOpenPreview }) {
   );
 }
 
-function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onExpandScript }) {
+function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript }) {
   const canEditPrompt = node.kind === "shot" || isContextNode(node) || (node.spec.role === "composition" && Boolean(node.spec.prompt));
   const composerRef = useRef(null);
   const [prompt, setPrompt] = useState(canEditPrompt ? node.spec.prompt : "");
@@ -681,7 +691,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
     );
   }
 
-  const outputSpec = kind === "video"
+  const outputSpec = kind === "audio" ? `${requirements.voice ?? "coral"} · ${requirements.speed ?? 1}× · ${requirements.mediaType === "audio/mpeg" ? "MP3" : (requirements.mediaType?.split("/")[1] ?? "wav").toUpperCase()}` : kind === "video"
     ? `${requirements.aspectRatio ?? "16:9"} · ${requirements.durationSeconds === undefined ? "自动时长" : `${requirements.durationSeconds} 秒`}`
     : [
         requirements.aspectRatio ?? "16:9",
@@ -701,7 +711,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
     ...supportedInputAssets,
     ...unsupportedSelectedInputAssets.filter((asset) => !supportedInputAssets.some((candidate) => candidate.id === asset.id)),
   ];
-  const canManageInputAssets = node.spec.kind === "shot" && Boolean(onUpdateInputAssets);
+  const canManageInputAssets = node.spec.kind === "shot" && kind !== "audio" && Boolean(onUpdateInputAssets);
   const failure = node.status === "failed" ? node.activeJob?.error ?? null : null;
   const generationHistory = node.generationHistory ?? [];
   const historyResults = generationHistory.flatMap((entry) => entry.outputAssets.map((asset, outputIndex) => ({
@@ -815,7 +825,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
         <span>输出设置</span>
         <button type="button" aria-label="关闭输出设置" onClick={() => setOutputSettingsOpen(false)}><X weight="bold" aria-hidden="true" /></button>
       </header>
-      <div className="composer-output-setting-group" role="radiogroup" aria-label="画幅">
+      {kind !== "audio" && <div className="composer-output-setting-group" role="radiogroup" aria-label="画幅">
         <span>画幅</span>
         <div>
           {supportedAspectRatios.map((aspectRatio) => (
@@ -832,7 +842,17 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
           ))}
         </div>
       </div>
-      {kind === "image" ? (
+      }
+      {kind === "audio" ? (
+        <div className="speech-settings">
+          <label>音色<select aria-label="音色" value={requirements.voice ?? "coral"} onChange={(event) => onUpdateRequirements(node.id, { ...requirements, voice: event.target.value })}>
+            {["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"].map((voice) => <option key={voice}>{voice}</option>)}
+          </select></label>
+          <label>语速<input aria-label="语速" type="number" min="0.25" max="4" step="0.25" value={requirements.speed ?? 1} onChange={(event) => { const speed = Number(event.target.value); if (speed >= 0.25 && speed <= 4) onUpdateRequirements(node.id, { ...requirements, speed }); }} /></label>
+          <label>格式<select aria-label="音频格式" value={requirements.mediaType ?? "audio/wav"} onChange={(event) => onUpdateRequirements(node.id, { ...requirements, mediaType: event.target.value })}><option value="audio/wav">WAV</option><option value="audio/mpeg">MP3</option>{requirements.mediaType && !["audio/wav", "audio/mpeg"].includes(requirements.mediaType) ? <option value={requirements.mediaType}>当前导入格式</option> : null}</select></label>
+          <small>文字转语音 · AI 合成声音。生成需从 Codex 或 CLI 执行。</small>
+        </div>
+      ) : kind === "image" ? (
         <>
           <div className="composer-output-setting-group composer-output-setting-group-count" role="radiogroup" aria-label="数量">
             <span>数量</span>
@@ -968,65 +988,34 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
     </>,
     canvasPortalRoot,
   ) : null;
-  const historyPicker = canManageInputAssets && historyOpen && canvasPortalRoot ? createPortal(
+  const historyPicker = node.spec.kind === "shot" && historyOpen && canvasPortalRoot ? createPortal(
     <>
-      <button
-        className="media-reference-picker-backdrop"
-        type="button"
-        aria-label="关闭节点历史结果"
-        onClick={() => setHistoryOpen(false)}
-      />
-      <section
-        className="media-reference-picker node-history-picker nodrag nopan nowheel"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`${node.title} 历史结果`}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header>
-          <span><Clock weight="fill" aria-hidden="true" />节点历史</span>
-          <button type="button" aria-label="关闭节点历史结果" onClick={() => setHistoryOpen(false)}><X weight="bold" aria-hidden="true" /></button>
-        </header>
-        <p>只显示当前节点已被新版本替换的本地输出。选择后会加入本镜头的参考素材，不会覆盖当前结果。</p>
-        <div className="node-history-list" role="list" aria-label="可回用的节点历史结果">
-          {historyResults.map((item) => {
-            const alreadyInput = inputAssetIds.includes(item.asset.id);
-            const supported = supportsLocalGenerationReference(item.asset);
-            const suffix = item.outputCount > 1 ? `的第 ${item.outputIndex + 1} 个结果` : "结果";
-            const actionLabel = alreadyInput
-              ? `第 ${item.attempt} 次生成${suffix}已作为参考素材`
-              : `将第 ${item.attempt} 次生成${suffix}用作参考素材`;
-            return (
-              <button
-                key={`${item.jobId}:${item.asset.id}`}
-                type="button"
-                disabled={alreadyInput || item.asset.missing || !supported}
-                aria-label={actionLabel}
-                title={item.asset.missing
-                  ? "本地项目中找不到该历史输出"
-                  : !supported
-                    ? "当前本地生成只支持 PNG、JPEG 或 WebP 图片参考"
-                    : actionLabel}
-                onClick={() => useHistoricalOutput(item.asset)}
-              >
-                {item.asset.previewUrl ? (
-                  <AssetPreview asset={item.asset} alt="" />
-                ) : (
-                  <span className={`node-history-kind node-history-kind-${item.asset.kind}`} aria-hidden="true">
-                    {item.asset.kind === "video" ? <VideoCamera weight="fill" /> : <ImageSquare weight="fill" />}
-                  </span>
-                )}
-                <span className="node-history-copy">
-                  <strong>第 {item.attempt} 次生成</strong>
-                  <small>{item.route?.modelId ?? "本地输出"}</small>
-                </span>
-                {alreadyInput ? <CheckCircle weight="fill" aria-label="已作为参考素材" /> : null}
-              </button>
-            );
-          })}
+      <button className="media-reference-picker-backdrop" type="button" aria-label="关闭节点历史结果" onClick={() => setHistoryOpen(false)} />
+      <section className="media-reference-picker node-history-picker nodrag nopan nowheel" role="dialog" aria-modal="true"
+        aria-label={`${node.title} 历史结果`} onPointerDown={(event) => event.stopPropagation()}>
+        <header><span><Clock aria-hidden="true" />节点结果</span><button type="button" aria-label="关闭节点历史结果" onClick={() => setHistoryOpen(false)}><X /></button></header>
+        <p>选择结果用于预览、导出和下游引用；原始生成记录及当前提示词保持不变。</p>
+        <div className="node-history-list">
+          {[
+            ...currentOutputAssets.map((asset) => ({ asset, jobId: node.activeJob?.id, attempt: node.activeJob?.attempt, current: true })),
+            ...historyResults,
+          ].map((item) => (
+            <div key={`${item.jobId}:${item.asset.id}`} className="node-result-choice">
+              <span>{item.current ? "当前结果" : `第 ${item.attempt} 次生成`}</span><small>{item.route?.modelId ?? node.route?.modelId ?? "本地输出"}</small>
+              <button type="button" disabled={!item.asset.previewUrl || item.asset.missing}
+                onClick={() => onOpenPreview?.(node, item.asset)}>预览</button>
+              <button type="button" disabled={item.asset.missing || node.status === "running" || node.status === "queued"}
+                aria-label={`选择第 ${item.attempt} 次生成的结果`}
+                aria-pressed={node.execution.selectedOutputAssetId === item.asset.id}
+                onClick={() => { onSelectOutput?.(node.id, item.asset.id); setHistoryOpen(false); }}>设为选中结果</button>
+              {canManageInputAssets && supportsLocalGenerationReference(item.asset) ? <button type="button"
+                disabled={inputAssetIds.includes(item.asset.id)}
+                aria-label={`将第 ${item.attempt} 次生成结果用作参考素材`}
+                onClick={() => useHistoricalOutput(item.asset)}>作为参考</button> : null}
+            </div>
+          ))}
         </div>
-        <footer>历史输出始终留在当前项目内；它们只能作为新的生成输入安全复用。</footer>
+        <footer>选择历史结果不会声称当前参数已经生成成功。</footer>
       </section>
     </>,
     canvasPortalRoot,
@@ -1145,7 +1134,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submitPrompt(event);
               }}
               rows="2"
-              placeholder="描述主体、动作与镜头语言"
+              placeholder={kind === "audio" ? "输入需要朗读的文字" : "描述主体、动作与镜头语言"}
             />
           ) : (
             <p>将上游镜头组合为一个可继续编辑的片段。</p>
@@ -1153,6 +1142,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
         </div>
         <footer className="composer-tools composer-tools-media">
           <div className="composer-settings-group">
+            {node.status !== "queued" && node.status !== "running" && (node.status === "succeeded" || node.status === "failed") ? <button type="button" className="composer-readout" aria-label="准备重新生成" onClick={() => onResetGeneration?.(node.id)}><ArrowClockwise />重新生成</button> : null}
             <span className="composer-readout composer-route"><Sparkle weight="fill" aria-hidden="true" /><span>{routeLabel}</span></span>
             <span className="composer-divider" />
             {failure ? (
@@ -1192,12 +1182,12 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
                 <FolderSimple weight="regular" aria-hidden="true" /><span>{inputAssetIds.length > 0 ? `${inputAssetIds.length} 个参考素材` : "参考素材"}</span>
               </button>
             ) : null}
-            {canManageInputAssets && historyResults.length > 0 ? <span className="composer-divider" /> : null}
-            {canManageInputAssets && historyResults.length > 0 ? (
+            {node.spec.kind === "shot" && (historyResults.length > 0 || currentOutputAssets.length > 0) ? <span className="composer-divider" /> : null}
+            {node.spec.kind === "shot" && (historyResults.length > 0 || currentOutputAssets.length > 0) ? (
               <button
                 className={`composer-readout composer-history-trigger${historyOpen ? " active" : ""}`}
                 type="button"
-                aria-label={`查看 ${generationHistory.length} 项历史结果`}
+                aria-label={generationHistory.length > 0 ? `查看 ${generationHistory.length} 项历史结果` : "查看节点结果"}
                 aria-expanded={historyOpen}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => {
@@ -1209,7 +1199,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
                 }}
                 title={`查看 ${generationHistory.length} 项历史结果`}
               >
-                <Clock weight="regular" aria-hidden="true" /><span>{generationHistory.length}</span>
+                <Clock weight="regular" aria-hidden="true" /><span>{generationHistory.length || "结果"}</span>
               </button>
             ) : null}
             {currentOutputAssets.length > 1 ? <span className="composer-divider" /> : null}
@@ -1299,8 +1289,8 @@ function CanvasHandle({ id, type, position, label, className = "" }) {
 
 function NodeQuickActions({ kind, node, className = "", style, openMenu = null, onOpenMenuChange, onCreateVariation, onOpenPreview }) {
   if (kind !== "image" && kind !== "video") return null;
-  const sourceAsset = node.outputAssets?.find((asset) => asset.previewUrl) ?? null;
-  const hasOutput = node.execution?.outputAssetIds?.length > 0;
+  const sourceAsset = node.selectedOutputAsset ?? node.outputAssets?.find((asset) => asset.previewUrl) ?? null;
+  const hasOutput = Boolean(node.selectedOutputAsset) || node.execution?.outputAssetIds?.length > 0;
   const releasePointerFocus = (event) => {
     if (event.detail === 0) return;
     const button = event.currentTarget;
@@ -1487,6 +1477,8 @@ function CanvasNode({ data, selected }) {
     onUpdateReferenceAssets,
     onUpdateInputAssets,
     onUpdateRequirements,
+    onSelectOutput,
+    onResetGeneration,
     onExpandScript,
     assets,
     viewportZoom = DEFAULT_CANVAS_ZOOM,
@@ -1548,7 +1540,7 @@ function CanvasNode({ data, selected }) {
             }
           }}
         >
-          <NodeMedia node={node} kind={kind} onOpenPreview={onOpenPreview} />
+          <NodeMedia node={node} kind={kind} onFocusNode={onFocusNode} onOpenPreview={onOpenPreview} />
         </div>
 
         {primarySelected ? (
@@ -1569,6 +1561,8 @@ function CanvasNode({ data, selected }) {
               onUpdateReferenceAssets={onUpdateReferenceAssets}
               onUpdateInputAssets={onUpdateInputAssets}
               onUpdateRequirements={onUpdateRequirements}
+              onSelectOutput={onSelectOutput}
+              onResetGeneration={onResetGeneration}
               onExpandScript={onExpandScript}
             />
           </NodeToolbar>
@@ -1611,24 +1605,14 @@ function CanvasAddMenu({ open, onClose, onAddNode }) {
   };
   return (
     <div className="canvas-add-menu" role="menu" aria-label="添加画布节点" data-canvas-control>
-      <p className="add-menu-heading">创作节点</p>
+      <p className="add-menu-heading">基础节点</p>
       <div className="add-menu-list">
         <button ref={firstItemRef} type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "text" })}><TextAlignLeft aria-hidden="true" /><span>文本提示</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "script" })}><FileText aria-hidden="true" /><span>故事脚本</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "character" })}><User aria-hidden="true" /><span>角色设定</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "scene-style" })}><FlowerLotus aria-hidden="true" /><span>场景与风格</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "shot", mediaKind: "image" })}><ImageSquare aria-hidden="true" /><span>图像镜头</span></button>
         <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "shot", mediaKind: "video" })}><VideoCamera aria-hidden="true" /><span>视频镜头</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "composition" })}><Stack aria-hidden="true" /><span>合成输出</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "smart-edit" })}><Scissors aria-hidden="true" /><span>剪辑</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "director" })}><FilmSlate aria-hidden="true" /><span>分镜规划</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "frame-analysis" })}><MagnifyingGlassPlus aria-hidden="true" /><span>视频分析</span></button>
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "audio" })}><SpeakerHigh aria-hidden="true" /><span>音频</span></button>
+        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "shot", mediaKind: "audio" })}><SpeakerHigh aria-hidden="true" /><span>音频</span></button>
       </div>
-      <p className="add-menu-heading add-menu-resource-heading">本地引用</p>
-      <div className="add-menu-list add-menu-resource-list">
-        <button type="button" role="menuitem" onClick={() => addAndClose({ kind: "composition", role: "asset-reference" })}><UploadSimple aria-hidden="true" /><span>添加本地素材引用</span></button>
-      </div>
+
     </div>
   );
 }
@@ -1920,9 +1904,10 @@ function EmptyCanvasGuide({ onAddNode }) {
     <section className="empty-canvas-guide" data-canvas-control aria-label="从模板开始创作">
       <p>从一个节点开始你的创作</p>
       <div>
-        <button type="button" onClick={() => onAddNode({ kind: "composition", role: "script" })}><TextT weight="bold" aria-hidden="true" /><span>故事脚本</span></button>
+        <button type="button" onClick={() => onAddNode({ kind: "composition", role: "text" })}><TextT weight="bold" aria-hidden="true" /><span>文本提示</span></button>
         <button type="button" onClick={() => onAddNode({ kind: "shot", mediaKind: "image" })}><ImageSquare weight="fill" aria-hidden="true" /><span>图像镜头</span></button>
         <button type="button" onClick={() => onAddNode({ kind: "shot", mediaKind: "video" })}><FilmSlate weight="fill" aria-hidden="true" /><span>视频镜头</span></button>
+        <button type="button" onClick={() => onAddNode({ kind: "shot", mediaKind: "audio" })}><SpeakerHigh aria-hidden="true" /><span>音频</span></button>
       </div>
     </section>
   );
@@ -1941,7 +1926,7 @@ function useNarrowCanvasViewport() {
   return isNarrowViewport;
 }
 
-function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeIds = [], onSelectNodes, onOpenPreview, onMoveNodes, onMoveGroup, onCreateGroup, onCopyNodes, onPasteNodes, canPasteNodes = false, onAddNode, onConnectNodes, onConnectionRejected, onDeleteEdges, onDeleteNodes, onDuplicateNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onExpandScript, onCreateVariation, onArrange, canUndo, canRedo, onUndo, onRedo }) {
+function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeIds = [], onSelectNodes, onOpenPreview, onMoveNodes, onMoveGroup, onCreateGroup, onCopyNodes, onPasteNodes, canPasteNodes = false, onAddNode, onConnectNodes, onConnectionRejected, onDeleteEdges, onDeleteNodes, onDuplicateNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, onCreateVariation, onArrange, canUndo, canRedo, onUndo, onRedo }) {
   const viewportRef = useRef(null);
   const isNarrowViewport = useNarrowCanvasViewport();
   const authoredGraphSpan = useMemo(() => {
@@ -1969,7 +1954,6 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
     });
   }, [draft, graphFraming]);
   const { fitView, getViewport, screenToFlowPosition, setViewport, zoomIn, zoomOut } = useReactFlow();
-  const nodesInitialized = useNodesInitialized();
   const [tool, setTool] = useState("select");
   const [showEdges, setShowEdges] = useState(true);
   const [snapToGrid, setSnapToGrid] = useState(false);
@@ -1981,15 +1965,16 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   const [quickActionsPosition, setQuickActionsPosition] = useState(null);
   const [quickActionMenu, setQuickActionMenu] = useState(null);
   const [composerPosition, setComposerPosition] = useState(Position.Bottom);
-  // The inline editor remains centered on its node. Like the interaction
-  // reference, it may naturally extend past the visible canvas edge instead
-  // of jumping horizontally between selection states.
+  const [isNodeDragActive, setIsNodeDragActive] = useState(false);
+  // Keep the editor anchored to its node, clamping only at viewport edges
+  // so all four node types remain editable on compact screens.
   const composerAlign = "center";
   const initialFitDraftRef = useRef(null);
   const previousNarrowViewportRef = useRef(isNarrowViewport);
   const composerPositionRef = useRef(composerPosition);
   const marqueeSelectionActiveRef = useRef(false);
   const groupDragRef = useRef(null);
+  const nodeDragActiveRef = useRef(false);
   const initialViewport = useMemo(() => ({
     // Preserve the reference's fixed world origin at narrow widths. The
     // canvas does not auto-fit its authored layout when the window shrinks.
@@ -2025,7 +2010,26 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   const canCreateGroup = selectedNodeIds.length >= 2
     && selectedNodeIds.every((nodeId) => !groupedMemberIds.has(nodeId));
   const selectedNodeKind = selectedNode ? getSurfaceKind(selectedNode) : null;
-  const nodeData = useMemo(() => ({ assets, onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onExpandScript, graph: draft, viewportZoom: zoom, composerPosition, composerAlign }), [assets, composerAlign, composerPosition, draft, focusNode, onExpandScript, onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, zoom]);
+  const syncComposerPosition = useCallback(() => {
+    const viewport = viewportRef.current;
+    const composer = viewport?.querySelector(".node-composer:not(.composer-expanded)");
+    if (!composer) return;
+    const bounds = viewport.getBoundingClientRect();
+    const rect = composer.getBoundingClientRect();
+    const previousOffset = Number(composer.dataset.viewportOffset ?? 0);
+    const offset = composerHorizontalOffset(rect.left - previousOffset, rect.width, bounds.left, bounds.width);
+    composer.dataset.viewportOffset = String(offset);
+    composer.style.translate = `${offset}px 0`;
+  }, []);
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(syncComposerPosition);
+    window.addEventListener("resize", syncComposerPosition);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", syncComposerPosition);
+    };
+  }, [selectedNode, isNarrowViewport, syncComposerPosition]);
+  const nodeData = useMemo(() => ({ assets, onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, graph: draft, viewportZoom: zoom, composerPosition, composerAlign }), [assets, composerAlign, composerPosition, draft, focusNode, onExpandScript, onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, zoom]);
   const projectedNodes = useMemo(
     () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE, selectedNodeIds),
     [draft, nodeData, selectedNodeId, selectedNodeIds],
@@ -2039,6 +2043,17 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
     const layoutChanges = changes.filter((change) => change.type !== "select");
     if (layoutChanges.length > 0) applyNodesChange(layoutChanges);
   }, [applyNodesChange]);
+  const beginNodeDrag = useCallback(() => {
+    // The ref closes the small gap before React commits the state update. This
+    // matters because selecting a card at drag start can immediately produce
+    // a fresh canonical projection.
+    nodeDragActiveRef.current = true;
+    setIsNodeDragActive(true);
+  }, []);
+  const finishNodeDrag = useCallback(() => {
+    nodeDragActiveRef.current = false;
+    setIsNodeDragActive(false);
+  }, []);
   const edges = useMemo(
     () => showEdges ? toFlowEdges(draft, selectedNodeId, selectedEdgeIds) : [],
     [draft, selectedEdgeIds, selectedNodeId, showEdges],
@@ -2143,18 +2158,31 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   }, [nodes, selectedNode, selectedNodeKind, zoom]);
 
   useEffect(() => {
-    if (arrangementPreview) return;
+    if (!shouldSyncFlowProjection({
+      hasArrangementPreview: Boolean(arrangementPreview),
+      isNodeDragActive: nodeDragActiveRef.current || isNodeDragActive,
+    })) return;
     setNodes(projectedNodes);
-  }, [arrangementPreview, projectedNodes, setNodes]);
+  }, [arrangementPreview, isNodeDragActive, projectedNodes, setNodes]);
 
   useEffect(() => {
-    if (!nodesInitialized || draft.nodes.length === 0 || initialFitDraftRef.current === draft.id) return undefined;
-    initialFitDraftRef.current = draft.id;
-    const frame = window.requestAnimationFrame(() => {
-      void fitCanvas(0);
+    if (draft.nodes.length === 0 || initialFitDraftRef.current === draft.id) return undefined;
+    // Custom card content can keep React Flow's nodes-initialized signal false
+    // even after the cards are visibly mounted. Wait for two paint frames and
+    // fit from the rendered bounds instead, so the initial viewport includes
+    // every upstream context node instead of leaving only its edge visible.
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        initialFitDraftRef.current = draft.id;
+        void fitCanvas(0);
+      });
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [draft.id, draft.nodes.length, fitCanvas, nodesInitialized]);
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [draft.id, draft.nodes.length, fitCanvas]);
 
   useEffect(() => {
     const wasNarrow = previousNarrowViewportRef.current;
@@ -2385,6 +2413,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
           selectCanvasNodes(nextNodeIds, nextPrimaryNodeId);
         }}
         onNodeDragStart={(_, node) => {
+          beginNodeDrag();
           if (node.data?.isLayoutGroup) {
             const memberNodeIds = node.data.groupBounds?.memberNodeIds ?? [];
             groupDragRef.current = {
@@ -2423,6 +2452,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
           }));
         }}
         onNodeDragStop={(_, node, movedNodes) => {
+          finishNodeDrag();
           const drag = groupDragRef.current;
           if (drag?.groupNodeId === node.id) {
             groupDragRef.current = null;
@@ -2431,7 +2461,6 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
               y: Math.round((node.position.y - drag.startPosition.y) / CANVAS_PRESENTATION_SCALE),
             };
             if (delta.x === 0 && delta.y === 0) {
-              setNodes(projectedNodes);
               return;
             }
             onMoveGroup?.(node.id, delta);
@@ -2473,6 +2502,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
         onMove={(_, viewport) => {
           setZoom(viewport.zoom);
           window.requestAnimationFrame(syncQuickActionsPosition);
+          window.requestAnimationFrame(syncComposerPosition);
         }}
         nodesDraggable={tool === "select"}
         edgesReconnectable={false}

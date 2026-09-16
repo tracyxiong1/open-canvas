@@ -134,7 +134,7 @@ function referencedAssetIds(document: CanvasDocument): Set<string> {
 
 export interface RegisterImportedAssetOptions {
   expectedProjectRevision: number;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
   mediaType: string;
   byteLength: number;
   checksumSha256: string;
@@ -242,6 +242,38 @@ function refreshLayoutGroupFingerprint(document: CanvasDocument, draft: Draft, g
     inputFingerprint: computeNodeFingerprint(document, draft, group),
     outputAssetIds: [],
   };
+}
+
+export interface NodeOutputOptions {
+  draftId: string;
+  nodeId: string;
+  expectedProjectRevision: number;
+  expectedDraftRevision: number;
+  now?: string;
+}
+
+/** Select an immutable historical output without rewriting the generation record. */
+export function selectNodeOutput(input: CanvasDocument, options: NodeOutputOptions & { assetId: string }): CanvasDocument {
+  const { document, draft } = prepareMutation(input, options.draftId, options.expectedProjectRevision, options.expectedDraftRevision);
+  const node = draft.nodes.find((candidate) => candidate.id === options.nodeId);
+  const asset = document.assets.find((candidate) => candidate.id === options.assetId);
+  if (!node || node.spec.kind !== "shot" || !asset || asset.kind !== node.spec.mediaKind
+    || !draft.jobs.some((job) => job.nodeId === node.id && job.status === "succeeded" && job.outputAssetIds.includes(asset.id))) {
+    throw new Error("Selected output must be a compatible successful result of this node");
+  }
+  if (node.execution.status === "queued" || node.execution.status === "running") throw new Error("Wait for the active generation before selecting an output");
+  node.execution.selectedOutputAssetId = asset.id;
+  invalidateDependencyClosure(document, draft, [node.id], false);
+  return finishMutation(document, draft, now(options.now));
+}
+
+export function resetNodeGeneration(input: CanvasDocument, options: NodeOutputOptions): CanvasDocument {
+  const { document, draft } = prepareMutation(input, options.draftId, options.expectedProjectRevision, options.expectedDraftRevision);
+  const node = draft.nodes.find((candidate) => candidate.id === options.nodeId);
+  if (!node || node.spec.kind !== "shot") throw new Error("Only media nodes can be regenerated");
+  if (node.execution.status === "queued" || node.execution.status === "running") throw new Error("An active generation is already resumable");
+  invalidateDependencyClosure(document, draft, [node.id], true);
+  return finishMutation(document, draft, now(options.now));
 }
 
 export interface CreateGroupOptions {

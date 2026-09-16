@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalSha256 } from "./canonical.js";
 import type { ResolvedRoute, RouteHint } from "./canvas-document.generated.js";
 
-export type MediaKind = "image" | "video";
+export type MediaKind = "image" | "video" | "audio";
 export type InputKind = "text" | MediaKind;
 export type ProviderErrorCode =
   | "provider_rejected"
@@ -17,6 +17,8 @@ export interface GenerationRequest {
   prompt: string;
   inputs: Array<{ assetId: string; kind: MediaKind; mediaType: string }>;
   requirements: {
+    voice?: string;
+    speed?: number;
     aspectRatio?: "16:9" | "9:16" | "1:1";
     width?: number;
     height?: number;
@@ -47,11 +49,15 @@ export interface ProviderSnapshot {
 }
 
 export interface ModelCapability {
+  voices?: readonly string[];
+  speechSpeed?: { min: number; max: number };
   modelId: string;
   kind: MediaKind;
   inputKinds: readonly InputKind[];
   /** Restricts the media types of non-text references when a provider requires it. */
   inputMediaTypes?: readonly string[];
+  /** Maximum number of project-local media references accepted by one request. */
+  maxInputs?: number;
   outputMediaTypes: readonly string[];
   aspectRatios?: ReadonlyArray<"16:9" | "9:16" | "1:1">;
   sizes?: ReadonlyArray<{ width: number; height: number }>;
@@ -228,11 +234,15 @@ function dimensionsMatchSizeConstraints(
 
 function capabilityMatches(request: GenerationRequest, capability: ModelCapability): boolean {
   if (capability.kind !== request.kind || !capability.inputKinds.includes("text")) return false;
+  if (capability.maxInputs !== undefined && request.inputs.length > capability.maxInputs) return false;
   if (request.inputs.some((input) => (
     !capability.inputKinds.includes(input.kind)
     || (capability.inputMediaTypes !== undefined && !capability.inputMediaTypes.includes(input.mediaType))
   ))) return false;
   const requirements = request.requirements;
+  if (requirements.voice !== undefined && !capability.voices?.includes(requirements.voice)) return false;
+  if (requirements.speed !== undefined && (!capability.speechSpeed
+    || requirements.speed < capability.speechSpeed.min || requirements.speed > capability.speechSpeed.max)) return false;
   if (requirements.mediaType !== undefined && !capability.outputMediaTypes.includes(requirements.mediaType)) return false;
   if (
     requirements.aspectRatio !== undefined
@@ -444,14 +454,25 @@ const MP4_BYTES = Buffer.from(
   "base64",
 );
 
+// One second of silence is an explicit test fixture, never a speech result.
+function mockWavBytes(): Buffer {
+  const bytes = Buffer.alloc(44 + 16000);
+  bytes.write("RIFF", 0); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write("WAVEfmt ", 8);
+  bytes.writeUInt32LE(16, 16); bytes.writeUInt16LE(1, 20); bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(8000, 24); bytes.writeUInt32LE(16000, 28);
+  bytes.writeUInt16LE(2, 32); bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36); bytes.writeUInt32LE(16000, 40);
+  return bytes;
+}
+
 function artifact(kind: MediaKind): { record: ProviderArtifact; bytes: Buffer } {
-  const bytes = kind === "image" ? PNG_BYTES : MP4_BYTES;
+  const bytes = kind === "image" ? PNG_BYTES : kind === "audio" ? mockWavBytes() : MP4_BYTES;
   const digest = createHash("sha256").update(bytes).digest("hex");
   return {
     record: {
       artifactId: `mock-${kind}-fixture-v1`,
       kind,
-      mediaType: kind === "image" ? "image/png" : "video/mp4",
+      mediaType: kind === "image" ? "image/png" : kind === "audio" ? "audio/wav" : "video/mp4",
       byteLength: bytes.length,
       checksumSha256: `sha256:${digest}`,
     },
@@ -464,6 +485,19 @@ const OPENAI_IMAGE_PRESET_SIZES = [
   { width: 1792, height: 1008 },
   { width: 1008, height: 1792 },
 ] as const;
+
+function configuredIdentifier(value: string | undefined, fallback: string, label: string): string {
+  if (value === undefined) return fallback;
+  const normalized = value.trim();
+  if (normalized === "") throw new Error(label + " must not be empty");
+  return normalized;
+}
+
+function configuredRegistryPriority(value: number | undefined, fallback: number, label: string): number {
+  if (value === undefined) return fallback;
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(label + " must be a non-negative integer");
+  return value;
+}
 
 function imageOutput(mediaType: string | undefined): { mediaType: string; outputFormat: "png" | "jpeg" | "webp" } {
   switch (mediaType ?? "image/png") {
@@ -567,43 +601,59 @@ function openAIImageEditForm(
  * paths materialize Base64 output only in process memory before Core writes
  * a content-addressed asset into the project store.
  */
+export const DEFAULT_OPENAI_IMAGE_MODEL = "gpt-image-2";
+
+export interface OpenAIImageAdapterOptions {
+  providerId?: string;
+  credentialEnv?: string;
+  modelId?: string;
+  registryPriority?: number;
+  fetcher?: FetchLike;
+}
+
 export class OpenAIImageAdapter implements ProviderAdapter {
-  readonly manifest: ProviderManifest = {
-    providerId: "openai",
-    credentialEnv: "OPENAI_API_KEY",
-    capabilities: [
-      {
-        modelId: "gpt-image-2",
-        kind: "image",
-        inputKinds: ["text", "image"],
-        inputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
-        outputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
-        aspectRatios: ["1:1", "16:9", "9:16"],
-        // Keep common UI choices discoverable, while allowing every published
-        // GPT Image 2 size that satisfies the documented constraints. This
-        // includes the canvas's 2048 x 1152 landscape setting.
-        sizes: OPENAI_IMAGE_PRESET_SIZES,
-        sizeConstraints: {
-          maxEdgeLength: 3840,
-          minPixels: 655360,
-          maxPixels: 8294400,
-          multipleOf: 16,
-          maxAspectRatio: 3,
-        },
-        // The local Studio deliberately exposes a small candidate set. The
-        // Image API's `n` parameter supports multiple outputs in one request;
-        // routing keeps the UI inside this tested adapter boundary.
-        maxOutputs: 4,
-        audio: "never",
-        registryPriority: 100,
-      },
-    ],
-  };
+  readonly manifest: ProviderManifest;
   readonly #jobs = new Map<string, StoredArtifacts>();
   readonly #fetch: FetchLike;
 
-  constructor(fetcher?: FetchLike) {
-    this.#fetch = fetcher ?? globalThis.fetch;
+  constructor(options: FetchLike | OpenAIImageAdapterOptions = {}) {
+    const configuration: OpenAIImageAdapterOptions = typeof options === "function" ? { fetcher: options } : options;
+    const providerId = configuredIdentifier(configuration.providerId, "openai", "OpenAI provider identifier");
+    const credentialEnv = configuredIdentifier(configuration.credentialEnv, "OPENAI_API_KEY", "OpenAI credential environment variable");
+    const modelId = configuredIdentifier(configuration.modelId, DEFAULT_OPENAI_IMAGE_MODEL, "OpenAI image model identifier");
+    const registryPriority = configuredRegistryPriority(configuration.registryPriority, 100, "OpenAI registry priority");
+    this.manifest = {
+      providerId,
+      credentialEnv,
+      capabilities: [
+        {
+          modelId,
+          kind: "image",
+          inputKinds: ["text", "image"],
+          inputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
+          outputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
+          aspectRatios: ["1:1", "16:9", "9:16"],
+          // Keep common UI choices discoverable, while allowing every published
+          // GPT Image 2 size that satisfies the documented constraints. This
+          // includes the canvas's 2048 x 1152 landscape setting.
+          sizes: OPENAI_IMAGE_PRESET_SIZES,
+          sizeConstraints: {
+            maxEdgeLength: 3840,
+            minPixels: 655360,
+            maxPixels: 8294400,
+            multipleOf: 16,
+            maxAspectRatio: 3,
+          },
+          // The local Studio deliberately exposes a small candidate set. The
+          // Image API's `n` parameter supports multiple outputs in one request;
+          // routing keeps the UI inside this tested adapter boundary.
+          maxOutputs: 4,
+          audio: "never",
+          registryPriority,
+        },
+      ],
+    };
+    this.#fetch = configuration.fetcher ?? globalThis.fetch;
   }
 
   async submit(
@@ -765,28 +815,44 @@ function geminiInteractionId(providerJobId: string): string {
  * generated bytes in memory until core stores them locally, and never writes
  * interaction URLs into the canvas document.
  */
+export const DEFAULT_GEMINI_OMNI_VIDEO_MODEL = "gemini-omni-flash-preview";
+
+export interface GeminiOmniVideoAdapterOptions {
+  providerId?: string;
+  credentialEnv?: string;
+  modelId?: string;
+  registryPriority?: number;
+  fetcher?: FetchLike;
+}
+
 export class GeminiOmniVideoAdapter implements ProviderAdapter {
-  readonly manifest: ProviderManifest = {
-    providerId: "google-gemini",
-    credentialEnv: "GEMINI_API_KEY",
-    capabilities: [
-      {
-        modelId: "gemini-omni-flash-preview",
-        kind: "video",
-        inputKinds: ["text", "image"],
-        outputMediaTypes: ["video/mp4"],
-        aspectRatios: ["16:9", "9:16"],
-        maxOutputs: 1,
-        audio: "always",
-        registryPriority: 100,
-      },
-    ],
-  };
+  readonly manifest: ProviderManifest;
   readonly #jobs = new Map<string, StoredArtifact>();
   readonly #fetch: FetchLike;
 
-  constructor(fetcher?: FetchLike) {
-    this.#fetch = fetcher ?? globalThis.fetch;
+  constructor(options: FetchLike | GeminiOmniVideoAdapterOptions = {}) {
+    const configuration: GeminiOmniVideoAdapterOptions = typeof options === "function" ? { fetcher: options } : options;
+    const providerId = configuredIdentifier(configuration.providerId, "google-gemini", "Gemini provider identifier");
+    const credentialEnv = configuredIdentifier(configuration.credentialEnv, "GEMINI_API_KEY", "Gemini credential environment variable");
+    const modelId = configuredIdentifier(configuration.modelId, DEFAULT_GEMINI_OMNI_VIDEO_MODEL, "Gemini video model identifier");
+    const registryPriority = configuredRegistryPriority(configuration.registryPriority, 100, "Gemini registry priority");
+    this.manifest = {
+      providerId,
+      credentialEnv,
+      capabilities: [
+        {
+          modelId,
+          kind: "video",
+          inputKinds: ["text", "image"],
+          outputMediaTypes: ["video/mp4"],
+          aspectRatios: ["16:9", "9:16"],
+          maxOutputs: 1,
+          audio: "always",
+          registryPriority,
+        },
+      ],
+    };
+    this.#fetch = configuration.fetcher ?? globalThis.fetch;
   }
 
   async submit(
@@ -955,10 +1021,502 @@ export class GeminiOmniVideoAdapter implements ProviderAdapter {
   }
 }
 
+export const DEFAULT_ARK_SEEDREAM_MODEL = "doubao-seedream-5-0-260128";
+/**
+ * Public Ark Seedance 2.5 model identifier. Consumers may still supply their
+ * own authorized Ark endpoint ID with OPEN_CANVAS_ARK_VIDEO_MODEL.
+ */
+export const DEFAULT_ARK_SEEDANCE_MODEL = "doubao-seedance-2-5-260628";
+
+const ARK_API_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+const ARK_IMAGE_PRESET_SIZES = [
+  { width: 2048, height: 2048 },
+  { width: 2048, height: 1152 },
+  { width: 1152, height: 2048 },
+] as const;
+// Seedance 2.5 accepts whole-second video durations from 4 through 30.
+const ARK_VIDEO_DURATIONS = [
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+  16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+] as const;
+
+export interface VolcengineArkAdapterOptions {
+  providerId?: string;
+  credentialEnv?: string;
+  /**
+   * A public model identifier or a user-owned Ark endpoint identifier. Model
+   * identifiers are configuration, not credentials, and remain outside the
+   * canvas document.
+   */
+  imageModelId?: string | null;
+  /** A public model identifier or a user-owned Ark endpoint identifier. */
+  videoModelId?: string | null;
+  registryPriority?: number;
+  fetcher?: FetchLike;
+}
+
+function configuredModelId(value: string | null | undefined, fallback: string, label: string): string | undefined {
+  if (value === null) return undefined;
+  return configuredIdentifier(value, fallback, label);
+}
+
+function arkImageSize(request: GenerationRequest): string {
+  const { width, height, aspectRatio } = request.requirements;
+  if (width !== undefined && height !== undefined) return String(width) + "x" + String(height);
+  switch (aspectRatio) {
+    case "16:9":
+      return "2048x1152";
+    case "9:16":
+      return "1152x2048";
+    case "1:1":
+    default:
+      return "2048x2048";
+  }
+}
+
+function arkImageReferences(
+  request: GenerationRequest,
+  context: ProviderExecutionContext | undefined,
+): string[] {
+  if (request.inputs.length === 0) return [];
+  if (context?.inputBytes === undefined) {
+    throw new ProviderAdapterError(
+      "provider_protocol",
+      false,
+      "Ark image reference bytes are unavailable in the local project store",
+    );
+  }
+  return request.inputs.map((reference) => {
+    if (reference.kind !== "image") {
+      throw new ProviderAdapterError(
+        "provider_protocol",
+        false,
+        "Ark image adapter accepts only image references in this version",
+      );
+    }
+    const bytes = context.inputBytes!.get(reference.assetId);
+    if (bytes === undefined || bytes.length === 0) {
+      throw new ProviderAdapterError(
+        "provider_protocol",
+        false,
+        "Ark image reference bytes are unavailable in the local project store",
+      );
+    }
+    return "data:" + reference.mediaType + ";base64," + Buffer.from(bytes).toString("base64");
+  });
+}
+
+function arkVideoContent(
+  request: GenerationRequest,
+  context: ProviderExecutionContext | undefined,
+): Array<Record<string, unknown>> {
+  if (request.inputs.length > 1) {
+    throw new ProviderAdapterError(
+      "provider_protocol",
+      false,
+      "Ark video adapter accepts one project-local image as a first-frame reference in this version",
+    );
+  }
+  const content: Array<Record<string, unknown>> = [{ type: "text", text: request.prompt }];
+  const reference = request.inputs[0];
+  if (reference === undefined) return content;
+  if (reference.kind !== "image") {
+    throw new ProviderAdapterError(
+      "provider_protocol",
+      false,
+      "Ark video adapter accepts only image references in this version",
+    );
+  }
+  const bytes = context?.inputBytes?.get(reference.assetId);
+  if (bytes === undefined || bytes.length === 0) {
+    throw new ProviderAdapterError(
+      "provider_protocol",
+      false,
+      "Ark video input bytes are unavailable in the local project store",
+    );
+  }
+  content.push({
+    type: "image_url",
+    image_url: {
+      url: "data:" + reference.mediaType + ";base64," + Buffer.from(bytes).toString("base64"),
+    },
+    // Ark documents `first_frame` (or an omitted role) for one-image
+    // image-to-video. `reference_image` denotes a different multimodal
+    // reference-generation mode and does not preserve this image as frame 1.
+    role: "first_frame",
+  });
+  return content;
+}
+
+function arkTaskId(providerJobId: string): string {
+  const prefix = "ark-video:";
+  if (!providerJobId.startsWith(prefix) || providerJobId.length === prefix.length) {
+    throw new ProviderAdapterError("provider_protocol", false, "Ark video job identifier is invalid");
+  }
+  return providerJobId.slice(prefix.length);
+}
+
+function arkArtifactUrl(value: string, provider: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") throw new Error("unsupported protocol");
+    return url.toString();
+  } catch {
+    throw new ProviderAdapterError(
+      "provider_protocol",
+      false,
+      provider + " returned an invalid artifact URL",
+    );
+  }
+}
+
+async function requestArtifactBytes(fetcher: FetchLike, provider: string, url: string): Promise<Buffer> {
+  let response: Response;
+  try {
+    response = await fetcher(url);
+  } catch {
+    throw new ProviderAdapterError("provider_unavailable", true, provider + " artifact could not be reached");
+  }
+  if (!response.ok) throw providerFailure(provider, response.status);
+  try {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0) {
+      throw new ProviderAdapterError("provider_protocol", false, provider + " returned an empty media artifact");
+    }
+    return bytes;
+  } catch (error) {
+    if (error instanceof ProviderAdapterError) throw error;
+    throw new ProviderAdapterError("provider_protocol", false, provider + " returned an unreadable media artifact");
+  }
+}
+
+type ArkImageRecord = {
+  b64Json?: string;
+  url?: string;
+};
+
+function arkImageRecords(payload: unknown): ArkImageRecord[] {
+  const root = objectValue(payload);
+  if (root === undefined || !Array.isArray(root.data)) return [];
+  return root.data.map((entry) => {
+    const record = objectValue(entry);
+    const b64Json = record === undefined ? undefined : stringValue(record.b64_json);
+    const url = record === undefined ? undefined : stringValue(record.url);
+    return {
+      ...(b64Json === undefined ? {} : { b64Json }),
+      ...(url === undefined ? {} : { url }),
+    };
+  });
+}
+
+type ArkVideoTask = {
+  id?: string;
+  status?: string;
+  videoUrl?: string;
+};
+
+function arkVideoTask(payload: unknown): ArkVideoTask {
+  const root = objectValue(payload);
+  const content = root === undefined ? undefined : objectValue(root.content);
+  const id = root === undefined ? undefined : stringValue(root.id);
+  const status = root === undefined ? undefined : stringValue(root.status)?.toLowerCase();
+  const videoUrl = content === undefined ? undefined : stringValue(content.video_url);
+  return {
+    ...(id === undefined ? {} : { id }),
+    ...(status === undefined ? {} : { status }),
+    ...(videoUrl === undefined ? {} : { videoUrl }),
+  };
+}
+
+/**
+ * Direct Ark adapter for user-owned keys. It deliberately uses the public
+ * Ark HTTP surface rather than any product-specific SDK, routing service, or
+ * credentials. Generated bytes are held only long enough for Core to write
+ * them into the project's content-addressed asset store.
+ */
+export class VolcengineArkAdapter implements ProviderAdapter {
+  readonly manifest: ProviderManifest;
+  readonly #jobs = new Map<string, StoredArtifact>();
+  readonly #fetch: FetchLike;
+
+  constructor(options: VolcengineArkAdapterOptions = {}) {
+    const imageModelId = configuredModelId(options.imageModelId, DEFAULT_ARK_SEEDREAM_MODEL, "Ark image model identifier");
+    const videoModelId = configuredModelId(options.videoModelId, DEFAULT_ARK_SEEDANCE_MODEL, "Ark video model identifier");
+    if (imageModelId === undefined && videoModelId === undefined) {
+      throw new Error("Ark provider must configure an image or video model");
+    }
+    const providerId = configuredIdentifier(options.providerId, "volcengine-ark", "Ark provider identifier");
+    const credentialEnv = configuredIdentifier(options.credentialEnv, "ARK_API_KEY", "Ark credential environment variable");
+    const registryPriority = configuredRegistryPriority(options.registryPriority, 90, "Ark registry priority");
+    const capabilities: ModelCapability[] = [];
+    if (imageModelId !== undefined) {
+      capabilities.push({
+        modelId: imageModelId,
+        kind: "image",
+        inputKinds: ["text", "image"],
+        inputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
+        outputMediaTypes: ["image/png"],
+        aspectRatios: ["1:1", "16:9", "9:16"],
+        sizes: ARK_IMAGE_PRESET_SIZES,
+        maxOutputs: 1,
+        audio: "never",
+        registryPriority,
+      });
+    }
+    if (videoModelId !== undefined) {
+      capabilities.push({
+        modelId: videoModelId,
+        kind: "video",
+        inputKinds: ["text", "image"],
+        inputMediaTypes: ["image/png", "image/jpeg", "image/webp"],
+        maxInputs: 1,
+        outputMediaTypes: ["video/mp4"],
+        aspectRatios: ["1:1", "16:9", "9:16"],
+        durationsSeconds: ARK_VIDEO_DURATIONS,
+        maxOutputs: 1,
+        audio: "optional",
+        registryPriority,
+      });
+    }
+    this.manifest = {
+      providerId,
+      credentialEnv,
+      capabilities,
+    };
+    this.#fetch = options.fetcher ?? globalThis.fetch;
+  }
+
+  async submit(
+    request: GenerationRequest,
+    modelId: string,
+    context?: ProviderExecutionContext,
+  ): Promise<ProviderSnapshot> {
+    const capability = requireCapability(this.manifest, request, modelId);
+    const credential = credentialValue(context?.credential);
+    return capability.kind === "image"
+      ? this.submitImage(request, modelId, credential, context)
+      : this.submitVideo(request, modelId, credential, context);
+  }
+
+  async poll(providerJobId: string, context?: ProviderExecutionContext): Promise<ProviderSnapshot> {
+    const completed = this.#jobs.get(providerJobId);
+    if (completed !== undefined) {
+      return { providerJobId, status: "succeeded", progress: 1, outputs: [completed.artifact] };
+    }
+    if (providerJobId.startsWith("ark-image:")) {
+      throw new ProviderAdapterError(
+        "provider_protocol",
+        true,
+        "Ark image job cannot be resumed after an incomplete local materialization",
+      );
+    }
+    const credential = credentialValue(context?.credential);
+    const taskId = arkTaskId(providerJobId);
+    const payload = await requestJson(
+      this.#fetch,
+      "Ark video",
+      ARK_API_BASE_URL + "/contents/generations/tasks/" + encodeURIComponent(taskId),
+      { method: "GET", headers: { Authorization: "Bearer " + credential } },
+    );
+    return this.snapshotForVideoTask(providerJobId, arkVideoTask(payload));
+  }
+
+  async *openArtifact(providerJobId: string, artifactId: string): AsyncIterable<Uint8Array> {
+    const artifact = this.#jobs.get(providerJobId);
+    if (artifact === undefined || artifact.artifact.artifactId !== artifactId) {
+      throw new ProviderAdapterError("provider_protocol", false, "Ark artifact is unavailable");
+    }
+    yield artifact.bytes;
+  }
+
+  private async submitImage(
+    request: GenerationRequest,
+    modelId: string,
+    credential: string,
+    context: ProviderExecutionContext | undefined,
+  ): Promise<ProviderSnapshot> {
+    const payload = await requestJson(
+      this.#fetch,
+      "Ark image",
+      ARK_API_BASE_URL + "/images/generations",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + credential,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          prompt: request.prompt,
+          ...(request.inputs.length === 0 ? {} : { image: arkImageReferences(request, context) }),
+          size: arkImageSize(request),
+          response_format: "b64_json",
+          output_format: "png",
+          sequential_image_generation: "disabled",
+          watermark: false,
+        }),
+      },
+    );
+    const records = arkImageRecords(payload);
+    if (records.length !== 1) {
+      throw new ProviderAdapterError("provider_protocol", false, "Ark image response did not contain one image output");
+    }
+    const record = records[0]!;
+    const bytes = record.b64Json !== undefined
+      ? bytesFromBase64(record.b64Json, "Ark image")
+      : record.url === undefined
+        ? undefined
+        : await requestArtifactBytes(this.#fetch, "Ark image", arkArtifactUrl(record.url, "Ark image"));
+    if (bytes === undefined) {
+      throw new ProviderAdapterError("provider_protocol", false, "Ark image response did not contain image bytes");
+    }
+    const providerJobId = "ark-image:" + request.jobId;
+    const artifact = artifactForBytes(providerJobId + ":image", "image", "image/png", bytes);
+    this.#jobs.set(providerJobId, { artifact, bytes });
+    return { providerJobId, status: "succeeded", progress: 1, outputs: [artifact] };
+  }
+
+  private async submitVideo(
+    request: GenerationRequest,
+    modelId: string,
+    credential: string,
+    context: ProviderExecutionContext | undefined,
+  ): Promise<ProviderSnapshot> {
+    const payload = await requestJson(
+      this.#fetch,
+      "Ark video",
+      ARK_API_BASE_URL + "/contents/generations/tasks",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + credential,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          content: arkVideoContent(request, context),
+          ...(request.requirements.aspectRatio === undefined ? {} : { ratio: request.requirements.aspectRatio }),
+          ...(request.requirements.durationSeconds === undefined ? {} : { duration: request.requirements.durationSeconds }),
+          ...(request.requirements.audio === "required" ? { generate_audio: true } : {}),
+          ...(request.requirements.audio === "forbidden" ? { generate_audio: false } : {}),
+          watermark: false,
+        }),
+      },
+    );
+    const task = arkVideoTask(payload);
+    if (task.id === undefined) {
+      throw new ProviderAdapterError("provider_protocol", false, "Ark video response did not contain a task id");
+    }
+    return this.snapshotForVideoTask("ark-video:" + task.id, task);
+  }
+
+  private async snapshotForVideoTask(providerJobId: string, task: ArkVideoTask): Promise<ProviderSnapshot> {
+    if (task.status === "succeeded" || task.status === "completed") {
+      if (task.videoUrl === undefined) {
+        throw new ProviderAdapterError("provider_protocol", false, "Ark video task completed without an artifact URL");
+      }
+      const bytes = await requestArtifactBytes(this.#fetch, "Ark video", arkArtifactUrl(task.videoUrl, "Ark video"));
+      const artifact = artifactForBytes(providerJobId + ":video", "video", "video/mp4", bytes);
+      this.#jobs.set(providerJobId, { artifact, bytes });
+      return { providerJobId, status: "succeeded", progress: 1, outputs: [artifact] };
+    }
+    if (task.status === "failed" || task.status === "cancelled" || task.status === "expired") {
+      return {
+        providerJobId,
+        status: "failed",
+        error: {
+          code: "provider_rejected",
+          retryable: false,
+          message: "Ark video task was rejected or expired",
+        },
+      };
+    }
+    return { providerJobId, status: task.status === "queued" ? "queued" : "running", progress: 0 };
+  }
+}
+
+export const DEFAULT_OPENAI_SPEECH_MODEL = "gpt-4o-mini-tts";
+export const SPEECH_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse", "marin", "cedar"] as const;
+
+/** Official POST /v1/audio/speech. Synchronous bytes stay process-local. */
+export class OpenAISpeechAdapter implements ProviderAdapter {
+  readonly manifest: ProviderManifest;
+  readonly #fetch: FetchLike;
+  readonly #jobs = new Map<string, StoredArtifact>();
+
+  constructor(options: OpenAIImageAdapterOptions = {}) {
+    this.#fetch = options.fetcher ?? globalThis.fetch;
+    this.manifest = {
+      providerId: configuredIdentifier(options.providerId, "openai-speech", "Speech provider identifier"),
+      credentialEnv: configuredIdentifier(options.credentialEnv, "OPENAI_API_KEY", "Speech credential environment variable"),
+      capabilities: [{
+        modelId: configuredIdentifier(options.modelId, DEFAULT_OPENAI_SPEECH_MODEL, "Speech model identifier"),
+        kind: "audio", inputKinds: ["text"], maxInputs: 0,
+        outputMediaTypes: ["audio/wav", "audio/mpeg"],
+        voices: SPEECH_VOICES, speechSpeed: { min: 0.25, max: 4 }, audio: "always",
+        registryPriority: configuredRegistryPriority(options.registryPriority, 100, "Speech registry priority"),
+      }],
+    };
+  }
+
+  async submit(request: GenerationRequest, modelId: string, context?: ProviderExecutionContext): Promise<ProviderSnapshot> {
+    requireCapability(this.manifest, request, modelId);
+    if (!request.prompt.trim() || [...request.prompt].length > 4096) {
+      throw new ProviderAdapterError("provider_rejected", false, "Speech text must contain 1 to 4096 characters");
+    }
+    const credential = credentialValue(context?.credential);
+    const mediaType = request.requirements.mediaType ?? "audio/wav";
+    let bytes: Buffer;
+    try {
+      const response = await this.#fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST", redirect: "error", signal: AbortSignal.timeout(120000),
+        headers: { Authorization: "Bearer " + credential, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: modelId, input: request.prompt,
+          voice: request.requirements.voice ?? "coral", speed: request.requirements.speed ?? 1,
+          response_format: mediaType === "audio/mpeg" ? "mp3" : "wav" }),
+      });
+      if (!response.ok) {
+        throw new ProviderAdapterError("provider_rejected", response.status === 429 || response.status >= 500,
+          `Speech request failed (HTTP ${response.status}); check local configuration or retry`);
+      }
+      bytes = Buffer.from(await response.arrayBuffer());
+      const validWav = bytes.length > 44 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WAVE";
+      const validMp3 = bytes.length > 3 && (bytes.toString("ascii", 0, 3) === "ID3" || (bytes[0] === 255 && (bytes[1]! & 224) === 224));
+      if (!(mediaType === "audio/wav" ? validWav : validMp3)) {
+        throw new ProviderAdapterError("provider_protocol", false, "Speech response did not contain the requested audio format");
+      }
+    } catch (error) {
+      if (error instanceof ProviderAdapterError) throw error;
+      throw new ProviderAdapterError("provider_unavailable", true, "Speech transport failed or timed out; provider completion is unknown");
+    }
+    const providerJobId = "openai-speech:" + request.jobId;
+    const artifact = artifactForBytes(providerJobId + ":audio", "audio", mediaType, bytes);
+    this.#jobs.set(providerJobId, { artifact, bytes });
+    return { providerJobId, status: "succeeded", progress: 1, outputs: [artifact] };
+  }
+
+  async poll(providerJobId: string): Promise<ProviderSnapshot> {
+    const job = this.#jobs.get(providerJobId);
+    if (!job) throw new ProviderAdapterError("provider_protocol", false, "Speech is synchronous; no remote polling handle is available");
+    return { providerJobId, status: "succeeded", progress: 1, outputs: [job.artifact] };
+  }
+
+  async *openArtifact(providerJobId: string, artifactId: string): AsyncIterable<Uint8Array> {
+    const job = this.#jobs.get(providerJobId);
+    if (!job || job.artifact.artifactId !== artifactId) throw new ProviderAdapterError("provider_protocol", false, "Speech artifact is unavailable");
+    yield job.bytes;
+  }
+}
+
 export class MockProviderAdapter implements ProviderAdapter {
   readonly manifest: ProviderManifest = {
     providerId: "mock",
     capabilities: [
+      {
+        modelId: "mock-audio-v1", kind: "audio", inputKinds: ["text"], maxInputs: 0,
+        outputMediaTypes: ["audio/wav"], voices: SPEECH_VOICES, speechSpeed: { min: 0.25, max: 4 },
+        audio: "always", registryPriority: 1000,
+      },
       {
         modelId: "mock-image-v1",
         kind: "image",

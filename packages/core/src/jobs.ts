@@ -12,6 +12,7 @@ import type { GenerationRequest, ProviderSnapshot } from "./providers.js";
 import { RevisionConflictError } from "./mutations.js";
 import {
   isContextComposition,
+  effectiveOutputAssetIds,
   isLayoutGroup,
   orderedDependencyNodes,
   orderedCompositionDependencies,
@@ -39,6 +40,18 @@ function isContextNode(node: Node): boolean {
   return isContextComposition(node);
 }
 
+/**
+ * Output compositions can materialize either images or videos. Keep the
+ * request and completion paths derived from the same contract so a locally
+ * imported image result cannot start as one kind and finish as another.
+ */
+function outputMediaKind(node: Node): "image" | "video" | "audio" {
+  if (node.spec.kind === "shot") return node.spec.mediaKind;
+  if (node.spec.mediaType.startsWith("image/")) return "image";
+  if (node.spec.mediaType.startsWith("video/")) return "video";
+  throw new Error(`Generated composition must use an image or video media type: ${node.id}`);
+}
+
 function finish(document: CanvasDocument, draft: Draft, now: string): CanvasDocument {
   draft.revision += 1;
   draft.updatedAt = now;
@@ -53,9 +66,7 @@ function finish(document: CanvasDocument, draft: Draft, now: string): CanvasDocu
  * before a production job is persisted.
  */
 function fallbackMockRouteFor(node: Node): ResolvedRoute {
-  const defaultModel = node.spec.kind === "shot" && node.spec.mediaKind === "image"
-    ? "mock-image-v1"
-    : "mock-video-v1";
+  const defaultModel = `mock-${outputMediaKind(node)}-v1`;
   if (node.spec.kind === "shot") {
     const override = node.spec.routing?.promptOverride;
     if (override) {
@@ -87,6 +98,14 @@ function assertMockRequirements(node: Node): void {
   if (node.spec.kind === "composition") return;
   const requirements = node.spec.requirements;
   if (!requirements) return;
+  if (node.spec.mediaKind === "audio") {
+    if ((requirements.mediaType !== undefined && requirements.mediaType !== "audio/wav")
+      || requirements.aspectRatio !== undefined || requirements.width !== undefined || requirements.height !== undefined
+      || requirements.durationSeconds !== undefined || requirements.count !== undefined || requirements.audio === "forbidden") {
+      throw new Error(`Mock provider cannot satisfy output requirements for ${node.id}`);
+    }
+    return;
+  }
   const image = node.spec.mediaKind === "image";
   const expectedMediaType = image ? "image/png" : "video/mp4";
   const expectedAspectRatio = image ? "1:1" : "16:9";
@@ -124,7 +143,7 @@ function assertDependenciesReady(draft: Draft, node: Node): void {
     if (
       dependencies.length === 0 ||
       dependencies.some(
-        (dependency) => isContextNode(dependency) || dependency.execution.status !== "succeeded" || dependency.execution.outputAssetIds.length === 0,
+        (dependency) => isContextNode(dependency) || effectiveOutputAssetIds(dependency).length === 0,
       )
     ) {
       throw new Error(`Composition dependencies are not ready: ${node.id}`);
@@ -133,7 +152,7 @@ function assertDependenciesReady(draft: Draft, node: Node): void {
   }
   if (node.spec.kind === "shot") {
     const outputDependencies = dependencies.filter((dependency) => !isContextNode(dependency));
-    if (outputDependencies.some((dependency) => dependency.execution.status !== "succeeded" || dependency.execution.outputAssetIds.length === 0)) {
+    if (outputDependencies.some((dependency) => effectiveOutputAssetIds(dependency).length === 0)) {
       throw new Error(`Shot dependencies are not ready: ${node.id}`);
     }
   }
@@ -148,9 +167,9 @@ function requestFor(document: CanvasDocument, draft: Draft, node: Node, jobId: s
   const dependencyOutputIds = node.spec.kind === "shot"
     ? directDependencies
         .filter((dependency) => !isContextNode(dependency))
-        .flatMap((dependency) => dependency.execution.outputAssetIds)
+        .flatMap(effectiveOutputAssetIds)
     : orderedCompositionDependencies(draft, node.id)
-        .flatMap((dependency) => dependency.execution.outputAssetIds);
+        .flatMap(effectiveOutputAssetIds);
   const inputIds = uniqueAssetIds(node.spec.kind === "shot"
     ? [
         ...node.spec.inputAssetIds,
@@ -160,9 +179,11 @@ function requestFor(document: CanvasDocument, draft: Draft, node: Node, jobId: s
     : dependencyOutputIds);
   return {
     jobId,
-    kind: node.spec.kind === "shot" ? node.spec.mediaKind : "video",
+    kind: outputMediaKind(node),
     prompt: node.spec.kind === "shot"
-      ? shotContextPrompt(node.spec.prompt, contextDependencies)
+      ? node.spec.mediaKind === "audio"
+        ? [...contextDependencies.map((context) => context.spec.kind === "composition" ? context.spec.prompt ?? "" : ""), node.spec.prompt].filter(Boolean).join("\n\n")
+        : shotContextPrompt(node.spec.prompt, contextDependencies)
       : node.spec.prompt ?? `Compose ${node.title}`,
     inputs: inputIds.map((assetId) => {
       const asset = assets.get(assetId);
@@ -330,12 +351,12 @@ export interface CompleteGenerationOptions {
   jobId: string;
   providerJobId: string;
   /** Provider outputs for this generation attempt, in the provider's order. */
-  artifacts?: Array<{ kind: "image" | "video"; mediaType: string; bytes: Uint8Array }>;
+  artifacts?: Array<{ kind: "image" | "video" | "audio"; mediaType: string; bytes: Uint8Array }>;
   /**
    * Compatibility input for callers that predate multi-candidate image
    * generation. New callers should pass `artifacts` even for one output.
    */
-  artifact?: { kind: "image" | "video"; mediaType: string; bytes: Uint8Array };
+  artifact?: { kind: "image" | "video" | "audio"; mediaType: string; bytes: Uint8Array };
   now?: string;
 }
 
@@ -350,9 +371,9 @@ export function completeGeneration(input: CanvasDocument, options: CompleteGener
   const artifacts = options.artifacts ?? (options.artifact === undefined ? [] : [options.artifact]);
   if (artifacts.length === 0) throw new Error("Provider did not return an artifact");
   const node = findNode(draft, job.nodeId);
-  const expectedKind = node.spec.kind === "shot" ? node.spec.mediaKind : "video";
+  const expectedKind = outputMediaKind(node);
   const expectedMediaType = node.spec.kind === "shot"
-    ? node.spec.requirements?.mediaType ?? (expectedKind === "image" ? "image/png" : "video/mp4")
+    ? node.spec.requirements?.mediaType ?? (expectedKind === "image" ? "image/png" : expectedKind === "audio" ? "audio/wav" : "video/mp4")
     : node.spec.mediaType;
   const expectedOutputCount = node.spec.kind === "shot" ? node.spec.requirements?.count ?? 1 : 1;
   if (artifacts.length !== expectedOutputCount) {

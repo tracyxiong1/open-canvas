@@ -105,6 +105,8 @@ function buildPreviewNode(node, jobs, jobsById, assetsById, resolveAssetUrl) {
     activeJob: activeJob ? structuredClone(activeJob) : null,
     route: resolveRoute(node, activeJob),
     outputAssets,
+    selectedOutputAsset: node.execution.selectedOutputAssetId
+      ? projectAssets([node.execution.selectedOutputAssetId], assetsById, resolveAssetUrl, node)[0] : null,
     generationHistory: projectGenerationHistory(node, jobs, assetsById, resolveAssetUrl),
   };
 }

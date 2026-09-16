@@ -116,6 +116,43 @@ function createDocumentWithMultipleShotOutputs() {
   });
 }
 
+function createDocumentWithVideoOutput() {
+  let document = createProject({ title: "视频预览" });
+  const draftId = document.activeDraftId;
+  document = addNode(document, {
+    draftId,
+    title: "可播放视频",
+    spec: {
+      kind: "shot",
+      prompt: "城市夜景中的镜头运动。",
+      mediaKind: "video",
+      inputAssetIds: [],
+      requirements: {
+        mediaType: "video/mp4",
+        aspectRatio: "16:9",
+        durationSeconds: 4,
+        audio: "either",
+      },
+    },
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0].revision,
+  });
+  const nodeId = document.drafts[0].nodes[0].id;
+  const started = startGeneration(document, {
+    draftId,
+    nodeId,
+    expectedProjectRevision: document.revision,
+    expectedDraftRevision: document.drafts[0].revision,
+    resolveRoute: () => ({ providerId: "volcengine-ark", modelId: "seedance-test", selectionSource: "prompt_override" }),
+  });
+  return completeGeneration(started.document, {
+    draftId,
+    jobId: started.request.jobId,
+    providerJobId: "ark-video:preview-test",
+    artifact: { kind: "video", mediaType: "video/mp4", bytes: new Uint8Array([1, 2, 3, 4]) },
+  });
+}
+
 function createDocumentWithCopyableContextGroup() {
   let document = createProject({ title: "节点组复制" });
   const draftId = document.activeDraftId;
@@ -334,6 +371,25 @@ describe("editable open canvas", () => {
 
     await user.click(screen.getByRole("button", { name: "关闭素材预览" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens an autoplaying preview directly from a video node", async () => {
+    const user = userEvent.setup();
+    render(
+      <App
+        initialDocument={createDocumentWithVideoOutput()}
+        assetUrl="http://127.0.0.1:40123/asset?token=preview-test"
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "播放 可播放视频" }));
+
+    const dialog = screen.getByRole("dialog", { name: "可播放视频" });
+    const video = within(dialog).getByLabelText("可播放视频 的生成画面");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("autoplay");
+    expect(screen.getByRole("button", { name: "可播放视频，已完成" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("edits a prompt through the shared command core and supports undo and redo", async () => {
@@ -654,7 +710,7 @@ describe("editable open canvas", () => {
 
     expect(screen.getByRole("dialog", { name: "输出设置" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /图片节点 2，待生成/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/1008 × 1792 · 2 张/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1152 × 2048 · 2 张/).length).toBeGreaterThan(0);
     expect(screen.getByText("未保存")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "撤销" }));
@@ -805,51 +861,36 @@ describe("editable open canvas", () => {
     await user.click(within(arrangement).getByRole("button", { name: "还原" }));
   });
 
-  it("offers the full creative-node palette and persists context nodes", async () => {
+  it("offers only four basic nodes and creates a generative audio node", async () => {
     const user = userEvent.setup();
     render(<App initialDocument={exampleDocument} />);
-
     await user.click(screen.getByRole("button", { name: "添加节点" }));
     const menu = screen.getByRole("menu", { name: "添加画布节点" });
-    for (const label of ["文本提示", "故事脚本", "角色设定", "场景与风格", "图像镜头", "视频镜头", "合成输出", "剪辑", "分镜规划", "视频分析", "音频", "添加本地素材引用"]) {
-      expect(within(menu).getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(4);
+    for (const label of ["文本提示", "图像镜头", "视频镜头", "音频"]) {
+      expect(within(menu).getByRole("menuitem", { name: label })).toBeInTheDocument();
     }
-    for (const label of ["素材库", "角色库", "风格库", "历史记录"]) {
-      expect(within(menu).queryByRole("menuitem", { name: label })).not.toBeInTheDocument();
-    }
-
     await user.click(within(menu).getByRole("menuitem", { name: "音频" }));
-    const audioNode = await screen.findByRole("button", { name: /音频 1，待生成/ });
-    expect(audioNode).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
-      "描述配乐、旁白、环境音或声音设计。",
-    );
-    expect(screen.getByText(/(?:可连接到镜头|已连接 \d+ 项)/)).toBeInTheDocument();
-    expect(screen.queryByText("图像模型")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/本次生成消耗/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "添加节点" }));
-    await user.click(screen.getByRole("menuitem", { name: "角色设定" }));
-    const characterNode = await screen.findByRole("button", { name: /角色设定 1，待生成/ });
-    expect(characterNode).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
-      "描述角色的外观、服装、年龄、表情和跨镜头连续性约束。",
-    );
-    expect(screen.getByText("为跨镜头一致性记录外观、服装和情绪。")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /音频 1，待生成/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("输入需要朗读的文字。");
+    expect(screen.queryByRole("button", { name: "关联本地参考素材" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "打开输出设置" }));
+    const settings = screen.getByRole("dialog", { name: "输出设置" });
+    expect(within(settings).queryByRole("radiogroup", { name: "画幅" })).not.toBeInTheDocument();
+    await user.selectOptions(within(settings).getByRole("combobox", { name: "音色" }), "alloy");
+    expect(screen.getByRole("combobox", { name: "音色" })).toHaveValue("alloy");
+    expect(screen.getByText(/AI 合成声音/)).toBeInTheDocument();
   });
 
-  it("adds a project-local composition output instead of a provider-shaped generation node", async () => {
-    const user = userEvent.setup();
-    render(<App initialDocument={exampleDocument} />);
-
-    await user.click(screen.getByRole("button", { name: "添加节点" }));
-    await user.click(screen.getByRole("menuitem", { name: "合成输出" }));
-    const output = await screen.findByRole("button", { name: /合成输出 \d+，待生成/ });
-    expect(output).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("region", { name: /合成输出 \d+ 参数/ })).toBeInTheDocument();
+  it("preserves legacy composition output without exposing its creation entry", async () => {
+    let project = structuredClone(exampleDocument);
+    project = addNode(project, { draftId: project.activeDraftId, expectedProjectRevision: project.revision,
+      expectedDraftRevision: project.drafts.find((draft) => draft.id === project.activeDraftId).revision,
+      title: "旧合成输出", spec: { kind: "composition", role: "composition", mediaType: "video/mp4" } });
+    render(<App initialDocument={project} />);
+    fireEvent.click(await screen.findByRole("button", { name: "旧合成输出，待生成" }));
     expect(screen.getByText("等待连接镜头")).toBeInTheDocument();
     expect(screen.getByText("成片渲染将在剪辑工作区接入")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Prompt" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开输出设置" })).not.toBeInTheDocument();
   });
 
@@ -892,26 +933,26 @@ describe("editable open canvas", () => {
     );
   });
 
-  it("gives the text context card clear project-local creation directions", async () => {
+  it("renders the actual project-local prompt in a text context card", async () => {
     render(<App />);
 
-    for (const label of ["叙事文本", "镜头描述", "画面提示", "声音意图"]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
-    }
+    expect(screen.getByText("测试镜头：城市天际线，夜景。")).toBeInTheDocument();
+    expect(screen.getByText("文本提示")).toBeInTheDocument();
+    expect(screen.queryByText("叙事文本")).not.toBeInTheDocument();
   });
 
   it("starts an empty canvas with the node type named by each quick-start action", async () => {
     const user = userEvent.setup();
     render(<App initialDocument={createProject({ title: "空白创作" })} />);
 
-    await user.click(screen.getByRole("button", { name: "故事脚本" }));
+    await user.click(screen.getByRole("button", { name: "文本提示" }));
 
-    const scriptNode = await screen.findByRole("button", { name: "脚本 1，待生成" });
+    const scriptNode = await screen.findByRole("button", { name: "文本 1，待生成" });
     expect(scriptNode).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("region", { name: "脚本 1 参数" })).toBeInTheDocument();
-    expect(screen.getByText("故事脚本")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "文本 1 参数" })).toBeInTheDocument();
+    expect(screen.getByText("文本提示")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(
-      "写下场景、角色、旁白与镜头节奏。",
+      "写下这段创作的主题、情绪或叙事目标。",
     );
   });
 
@@ -950,22 +991,24 @@ describe("editable open canvas", () => {
     expect(screen.queryByRole("button", { name: "素材库" })).not.toBeInTheDocument();
   });
 
-  it("keeps script, edit, analysis, and audio source media inside their project-local context nodes", async () => {
+  it("keeps legacy script, edit, analysis, and audio contexts editable", async () => {
     const user = userEvent.setup();
-    render(<App />);
-
-    for (const nodeLabel of ["故事脚本", "剪辑", "视频分析", "音频"]) {
-      await user.click(screen.getByRole("button", { name: "添加节点" }));
-      await user.click(screen.getByRole("menuitem", { name: nodeLabel }));
+    let project = structuredClone(exampleDocument);
+    const contexts = [["故事脚本", "script"], ["剪辑", "smart-edit"], ["视频分析", "frame-analysis"], ["旧音频", "audio"]];
+    for (const [title, role] of contexts) {
+      project = addNode(project, { draftId: project.activeDraftId, expectedProjectRevision: project.revision,
+        expectedDraftRevision: project.drafts.find((draft) => draft.id === project.activeDraftId).revision,
+        title, spec: { kind: "composition", role, prompt: "旧项目描述", mediaType: "application/json" } });
+    }
+    render(<App initialDocument={project} />);
+    for (const [title] of contexts) {
+      fireEvent.click(screen.getByRole("button", { name: title + "，待生成" }));
+      expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue("旧项目描述");
       await user.click(screen.getByRole("button", { name: "关联本地素材" }));
-
       const picker = screen.getByRole("listbox", { name: "选择已导入本地素材" });
       await user.click(within(picker).getAllByRole("option")[0]);
-      expect(screen.getByRole("button", { name: /移除 图片素材 asset_sha256/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /移除 .*素材 asset_sha256/ })).toBeInTheDocument();
     }
-
-    expect(screen.getByText("已更新本地素材引用")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "素材库" })).not.toBeInTheDocument();
   });
 
   it("associates a project-local reference asset with an image shot", async () => {
@@ -1015,13 +1058,29 @@ describe("editable open canvas", () => {
 
     const history = screen.getByRole("dialog", { name: "历史镜头 历史结果" });
     expect(within(history).getByText("第 1 次生成")).toBeInTheDocument();
-    expect(within(history).getByText("mock-image-v1")).toBeInTheDocument();
+    expect(within(history).getAllByText("mock-image-v1").length).toBeGreaterThan(0);
     await user.click(within(history).getByRole("button", { name: "将第 1 次生成结果用作参考素材" }));
 
     expect(screen.queryByRole("dialog", { name: "历史镜头 历史结果" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /历史镜头，待生成/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "管理本地参考素材，已关联 1 个" })).toBeInTheDocument();
     expect(screen.getByText("已更新本地参考素材，相关节点已标记为待生成")).toBeInTheDocument();
+  });
+
+  it("selects historical media without rewriting prompt or job status and supports undo", async () => {
+    const user = userEvent.setup();
+    render(<App initialDocument={createDocumentWithHistoricalShotOutput()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /历史镜头，已完成/ }));
+    const prompt = screen.getByRole("textbox", { name: "Prompt" }).value;
+    await user.click(screen.getByRole("button", { name: "查看 1 项历史结果" }));
+    await user.click(screen.getByRole("button", { name: "选择第 1 次生成的结果" }));
+    expect(screen.getByText("已选结果")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toHaveValue(prompt);
+    expect(screen.getByRole("button", { name: /历史镜头，已完成/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "撤销" }));
+    expect(screen.queryByText("已选结果")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "准备重新生成" }));
+    expect(screen.getByRole("button", { name: /历史镜头，待生成/ })).toBeInTheDocument();
   });
 
   it("keeps multiple current image candidates project-local and opens the selected preview", async () => {

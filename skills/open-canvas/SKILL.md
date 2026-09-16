@@ -10,6 +10,10 @@ editable video-creation graph. Keep the canvas project-local: characters,
 scene/style direction, and imported media are nodes or local asset references,
 not global libraries.
 
+Current creation scope: text, image, video and audio. Use a text context node
+for new scripts, character descriptions or style direction instead of adding
+specialized roles. Preserve all legacy roles when editing existing projects.
+
 ## Project boundary
 
 - Locate the Open Canvas repository first. In this workspace it is the folder
@@ -44,7 +48,7 @@ project mutation, then leave the resulting canvas editable for the next turn.
 2. Apply only the requested atomic operation. Add editable context through
    `node add --kind composition --role script|character|scene-style|asset-reference`,
    or a generative image/video node through `node add --kind shot --media-kind
-   image|video --prompt ...`. Use `node update`, `node delete`, `node move`,
+   image|video|audio --prompt ...`. Use `node update`, `node delete`, `node move`,
    `node copy`, `edge connect`, `edge disconnect`, and `group create` only when
    the user asks for their corresponding change.
 3. Run `script expand --project <dir> --node <script-node-id>` only when the
@@ -75,6 +79,12 @@ routing layer rather than inventing a branded model choice.
 - Import user-provided local media with `asset import --project <dir> --file
   <path>`. Associate the returned asset ID with an `asset-reference` node or a
   shot's `--input-assets` field.
+- When Codex or another local agent has already produced a media file, record
+  it as the visible, traceable output of a dirty image/video node with `result
+  import --project <dir> --node <id> --file <path>`. This is distinct from
+  `asset import`: it creates a successful job and output asset rather than a
+  reusable input. Supply `--provider` and `--model` only as non-secret labels
+  when provenance needs to be recorded.
 - For a revision such as “make shot 2 night”, run `draft copy`, update only the
   relevant node in the new draft, then inspect the affected subgraph. Do not
   alter the original draft unless the user explicitly asks to overwrite it.
@@ -85,12 +95,47 @@ routing layer rather than inventing a branded model choice.
 
 ## Generation boundary
 
+Audio nodes use `--media-kind audio` and literal speech text in `--prompt`.
+Optional settings are `--voice coral`, `--speed 1` (0.25–4), and
+`--media-type audio/wav` or `audio/mpeg`. Upstream text is spoken as plain text;
+do not connect image/video references to a TTS node. The `openai-speech` adapter
+uses `gpt-4o-mini-tts` and the local `OPENAI_API_KEY` environment variable.
+Disclose generated speech as AI-generated; never present mock silence as TTS.
+
+`asset import` accepts audio files as project-local assets. To display a local
+recording on an audio node, use `result import`; its actual audio MIME type is
+recorded on the node. Select an existing successful result with `result select
+--project <dir> --node <id> --asset <asset-id>`. This preserves original jobs and
+current prompt, invalidates downstream nodes, and uses the selected asset for
+preview, downstream generation and export. It does not claim the old result
+was generated with current settings. Editing the node clears this selection.
+
+Calling `generate` again on a successful media node starts a new attempt while
+keeping history. Speech is synchronous: an interrupted submitted request has
+no remote polling handle and is not silently resubmitted on resume. Report the
+uncertain completion and require a deliberate new attempt. Video jobs retain
+their existing persisted-task polling behavior.
+
 Treat graph creation and provider generation as separate actions. Only run
 `generate` when the user explicitly asks to generate or approves that external
 provider work may start. Confirm the target node and draft before a paid or
 remote generation action.
 
-The checked-in CLI has these executable BYOK routes:
+The checked-in CLI has these executable BYOK routes. Users can supply a
+non-secret provider configuration with `generate --provider-config <path>` or
+`OPEN_CANVAS_PROVIDER_CONFIG`; use `provider list` to inspect the effective
+safe metadata. The JSON config may select built-in adapters, stable provider
+IDs, model/endpoint IDs, priority, and a credential environment-variable name.
+It must never contain an API key or token.
+
+- `volcengine-ark` / `doubao-seedream-5-0-260128`: direct image generation
+  with project-local image references; and `doubao-seedance-2-5-260628`:
+  video generation from text or one project-local first-frame image (4–30
+  seconds). Both routes are enabled only when the user's local `ARK_API_KEY`
+  environment variable is already configured. A user may point either route
+  at their own public Ark model/endpoint identifier with the non-secret
+  `OPEN_CANVAS_ARK_IMAGE_MODEL` or `OPEN_CANVAS_ARK_VIDEO_MODEL` environment
+  setting. Do not ask for or display any of these values.
 
 - `openai` / `gpt-image-2`: text-to-image and project-local image-reference
   generation/editing, enabled only when the user's local `OPENAI_API_KEY`
