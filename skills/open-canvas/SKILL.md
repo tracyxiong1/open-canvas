@@ -5,7 +5,7 @@ description: Create, revise, inspect, and preview a project-local AI video creat
 
 # Open Canvas
 
-Use the repository's canonical CLI and document model to create or change an
+Use the canonical CLI and document model to create or change an
 editable video-creation graph. Keep the canvas project-local: characters,
 scene/style direction, and imported media are nodes or local asset references,
 not global libraries.
@@ -16,18 +16,22 @@ specialized roles. Preserve all legacy roles when editing existing projects.
 
 ## Project boundary
 
-- Locate the Open Canvas repository first. In this workspace it is the folder
-  containing `packages/cli/bin/open-canvas.js` and `project.json` files belong
-  in a separate user-selected project directory.
-- Use `node <repo>/packages/cli/bin/open-canvas.js` after building Core and the
-  CLI when their `dist` output is absent or stale. Do not hand-edit
+- Start with `open-canvas --version` and `open-canvas --help`. A globally
+  installed npm CLI works from any project directory without a source checkout.
+  If the executable is missing, use an explicitly supplied local npm install
+  or CLI path. For a source checkout, run `npm run build --workspace
+  open-canvas-cli` there, then use `node <repo>/packages/cli/bin/open-canvas.js`.
+  The public package is `open-canvas-cli`. If no CLI is installed,
+  use `npm exec --yes --registry=https://registry.npmjs.org/
+  --package=open-canvas-cli -- open-canvas <args>`.
+- Keep `project.json` in the user-selected project directory. Do not hand-edit
   `project.json`; CLI mutations preserve validation, revisions, fingerprints,
   invalidation, and asset identity.
 - A project may contain several drafts. Create a draft copy before a follow-up
   that should preserve the previous version.
-- Do not create a global role, material, style, or history library. Use
-  `character`, `scene-style`, and `asset-reference` composition nodes, and use
-  `asset import` for bytes that belong to the current project.
+- Do not create a global role, material, style, or history library. Use text
+  nodes for reusable direction, and `asset import` for bytes that belong to
+  the current project. Preserve legacy role nodes when editing older projects.
 - Use `group create --project <dir> --members <node-id,node-id,...>` only to
   organize two or more nodes within the active draft. A group is a local layout
   frame, not a role/material library, generation node, or cross-project asset.
@@ -46,7 +50,7 @@ project mutation, then leave the resulting canvas editable for the next turn.
    when the request concerns one node and its local graph; `status` is only a
    concise project-wide summary.
 2. Apply only the requested atomic operation. Add editable context through
-   `node add --kind composition --role script|character|scene-style|asset-reference`,
+   `node add --kind composition --role text --prompt ...`,
    or a generative image/video node through `node add --kind shot --media-kind
    image|video|audio --prompt ...`. Use `node update`, `node delete`, `node move`,
    `node copy`, `edge connect`, `edge disconnect`, and `group create` only when
@@ -85,11 +89,12 @@ routing layer rather than inventing a branded model choice.
   `asset import`: it creates a successful job and output asset rather than a
   reusable input. Supply `--provider` and `--model` only as non-secret labels
   when provenance needs to be recorded.
-- For a revision such as “make shot 2 night”, run `draft copy`, update only the
-  relevant node in the new draft, then inspect the affected subgraph. Do not
-  alter the original draft unless the user explicitly asks to overwrite it.
+- For a revision such as “make shot 2 night”, update only that node and inspect
+  the affected subgraph. Use `draft copy` first when the user requests a variation
+  or preservation of the original draft.
 - Use `open --no-open` to obtain a local Studio URL backed by a loopback bridge
-  for that project. Start the Studio through the repository's preview command
+  for that project. The npm CLI does not include a Studio server: use an
+  already-running local Studio with `--url`, or start the Studio through the repository's preview command
   when a visible canvas is needed; the Studio's explicit Save control writes
   the current validated document back through the CLI persistence boundary.
 
@@ -149,8 +154,10 @@ It must never contain an API key or token.
 Never request either value in chat. If the required variable is absent, report
 only its variable name and leave the node dirty. By default the router chooses
 an eligible configured real provider; it never silently falls back to mock.
-Use `--provider mock` only when an explicit deterministic local demo or test is
+Set `--provider mock` on `node add/update` only when an explicit deterministic local demo or test is
 requested, and label the resulting media as mock output.
+`generate` uses the node's saved routing: set provider/model overrides through
+`node add/update`, not flags on `generate`.
 
 The current CLI does not render a composition node into a final edited video.
 Generate and export an individual shot until the local composition renderer is

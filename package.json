@@ -8,6 +8,8 @@
     "packages/preview"
   ],
   "scripts": {
+    "pack:cli": "node -e \"require('node:fs').mkdirSync('artifacts', { recursive: true })\" && npm pack --workspace open-canvas-cli --pack-destination artifacts",
+    "test:package": "npm run test:package --workspace open-canvas-cli",
     "build": "npm run build --workspaces --if-present",
     "check": "npm run build --workspace @open-canvas/core && npm run check --workspaces --if-present",
     "dev": "npm run dev --workspace @open-canvas/preview",
@@ -17,5 +19,6 @@
     "@types/node": "^22.15.0",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0"
-  }
+  },
+  "version": "0.1.0"
 }

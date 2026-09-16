@@ -49,6 +49,7 @@ import {
 
 import { CliUsageError, numberFlag, optionalFlag, requiredFlag, type ParsedArgs } from "./args.js";
 import { startPreviewBridge } from "./preview-bridge.js";
+import { cliVersion, installSkill } from "./skill.js";
 import {
   createConfiguredProviderAdapters,
   loadProviderConfiguration,
@@ -348,6 +349,8 @@ function helpCommand() {
   return {
     usage: "open-canvas <command> [options]",
     commands: [
+      "--version",
+      "skill install [--dir <skills-directory>]",
       "init <directory> --title <title>",
       "status --project <directory> [--draft <id>]",
       "context --project <directory> [--draft <id>] [--node <id> --depth 0..4]",
@@ -538,7 +541,9 @@ function shotSpecFromArgs(args: ParsedArgs, current?: ShotSpec): ShotSpec {
 
 export async function runCommand(args: ParsedArgs): Promise<unknown> {
   const [command, subcommand] = args.positionals;
+  if (args.flags.has("version")) return { version: await cliVersion() };
   if (args.flags.has("help") || command === "help") return helpCommand();
+  if (command === "skill" && subcommand === "install") return installSkill(optionalFlag(args, "dir"));
   if (command === "init") return initCommand(args);
   if (command === "node" && subcommand === "add") return addNodeCommand(args);
   if (command === "node" && subcommand === "update") return updateNodeCommand(args);
@@ -560,7 +565,7 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
   if (command === "preview-bridge") return previewBridgeCommand(args);
   if (command === "preview" || command === "open") return previewCommand(args);
   if (command === "export") return exportCommand(args);
-  throw new CliUsageError("Unknown command. Use init, context, node add/update/delete/move/copy, group create, edge connect/disconnect, script expand, asset import, result import, provider list, draft copy, generate, status, open/preview, or export.");
+  throw new CliUsageError("Unknown command. Use --help to list available commands, including skill install.");
 }
 
 async function initCommand(args: ParsedArgs): Promise<unknown> {
@@ -985,6 +990,10 @@ async function selectResultCommand(args: ParsedArgs): Promise<unknown> {
 }
 
 async function generateCommand(args: ParsedArgs): Promise<unknown> {
+  const routingFlags = ["provider", "model", "ai-provider", "ai-model"];
+  if (routingFlags.some((flag) => args.flags.has(flag))) {
+    throw new CliUsageError("generate uses the node's saved routing. Set --provider/--model or --ai-provider/--ai-model with node add/update before generating; no generation was started.");
+  }
   const configPath = optionalFlag(args, "provider-config");
   const providerConfiguration = await loadProviderConfiguration(configPath === undefined ? {} : { path: configPath });
   const projectDirectory = resolve(requiredFlag(args, "project"));

@@ -1,17 +1,41 @@
 {
-  "name": "@open-canvas/cli",
+  "name": "open-canvas-cli",
   "version": "0.1.0",
-  "private": true,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "description": "Local-first Open Canvas CLI and Codex skill",
   "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "README.md"
+  ],
   "bin": {
     "open-canvas": "./bin/open-canvas.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build --workspace @open-canvas/core && node scripts/build.mjs",
+    "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build --workspace @open-canvas/core && node --import tsx --test test/**/*.test.ts"
+    "test": "npm run build && node --import tsx --test test/**/*.test.ts",
+    "test:package": "node --test test/package.test.mjs"
   },
-  "dependencies": {
-    "@open-canvas/core": "0.1.0"
+  "devDependencies": {
+    "@open-canvas/core": "0.1.0",
+    "esbuild": "^0.28.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tracyxiong1/open-canvas.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/tracyxiong1/open-canvas#readme",
+  "bugs": {
+    "url": "https://github.com/tracyxiong1/open-canvas/issues"
   }
 }

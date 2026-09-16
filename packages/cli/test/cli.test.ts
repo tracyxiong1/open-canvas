@@ -111,6 +111,20 @@ test("CLI prints machine-readable help without requiring a project", async () =>
   assert.deepEqual(JSON.parse(short.stdout), longHelp);
 });
 
+test("generate rejects ignored routing flags before changing a node or starting a job", async () => {
+  const project = await mkdtemp(join(tmpdir(), "open-canvas-routing-flags-"));
+  await cli(["init", project, "--title", "Routing flags"]);
+  const node = await cli(["node", "add", "--project", project, "--kind", "shot", "--media-kind", "image",
+    "--title", "Image", "--prompt", "test", "--provider", "mock"]);
+  const before = await readFile(join(project, "project.json"), "utf8");
+  for (const flag of ["provider", "model", "ai-provider", "ai-model"]) {
+    const result = await cliProcess(["generate", "--project", project, "--node", node.nodeId, `--${flag}`, "mock"]);
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /node add\/update/);
+    assert.equal(await readFile(join(project, "project.json"), "utf8"), before);
+  }
+});
+
 test("CLI loads a safe user provider configuration without exposing credentials", async () => {
   const root = await mkdtemp(join(tmpdir(), "open-canvas-provider-config-"));
   const configPath = join(root, "providers.json");
