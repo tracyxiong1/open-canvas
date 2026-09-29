@@ -328,7 +328,7 @@ supports the required behavior.
   non-secret resolved route.
 - Image capability: text-to-image and project-local PNG/JPEG/WebP reference
   images; one PNG output; `1:1`, `16:9`, or `9:16`; exact local presets
-  `2048x2048`, `2048x1152`, and `1152x2048`; audio `never`. The adapter
+  `2048x2048`, `2560x1440`, and `1440x2560`; audio `never`. The adapter
   requests `b64_json` and keeps its bytes in memory until Core writes the
   project-local asset.
 - Video capability: Seedance 2.5 text-to-video or one project-local
@@ -499,3 +499,22 @@ No real speech provider was contacted by the unit tests or local browser QA.
 
 Protocol evidence: [Create speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)
 and [Text-to-speech guide](https://developers.openai.com/api/docs/guides/text-to-speech).
+
+
+### Local Studio execution and resume
+
+The bundled Studio sends explicit generate requests to the local CLI service.
+Provider keys remain in its environment, including values loaded with
+`--env-file`; they never enter browser responses or project packages. An Ark
+instance may configure an HTTPS `baseUrl` without userinfo, query or fragment.
+The default remains the public Ark API root. Provider requests reject redirects.
+
+Before submitting a real request, the CLI persists a submission boundary. If a
+process exits before a task handle arrives, recovery reports unknown completion
+instead of resubmitting. With an Ark/Gemini video handle, later invocations poll
+the same task. Transient polling failures preserve that handle. Completion and
+progress merge into the latest document so unrelated canvas edits are retained.
+
+The Ark landscape/portrait presets use 2560×1440 and 1440×2560 after live
+validation found the configured image model requires at least 3,686,400 pixels.
+Explicit dimensions in older documents are retained and checked by routing.

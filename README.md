@@ -6,10 +6,10 @@
 
 - **对话创作**：增加节点、修改提示词、连接参考素材或创建草稿，按当前请求逐步编辑。
 - **本地项目**：CLI、Skill 和 Studio 共用项目文档，素材与结果历史保存在项目中。
-- **四类节点**：文本、图片、视频、音频，支持媒体导入、预览和单节点结果导出。
+- **四类节点**：文本、图片、视频、音频，支持拖入素材、预览、生成、结果历史和成片导出。
 - **自带密钥（BYOK）**：真实生成使用用户配置的提供方；创建和编辑画布无需 API key。
 
-CLI 和 Skill 已通过 npm 发布。**Studio 目前需要从源码启动，npm 包不包含 Studio 服务。**
+CLI 安装包包含 Studio 和 Codex Skill。`open-canvas init ./my-canvas --title "我的画布" --open` 创建本地项目并打开画布，无需克隆源码或启动开发服务。
 
 ## 先看它能做什么
 
@@ -17,7 +17,7 @@ CLI 和 Skill 已通过 npm 发布。**Studio 目前需要从源码启动，npm 
 
 ![Open Canvas 画布总览：文本创作方向连接参考图和旁白，参考图连接视频镜头](docs/qa/readme-demo/canvas-overview.png)
 
-图中是“蓝色轨道”示例项目：图片为导入的仓库测试素材，视频和旁白尚未生成。连线表达节点依赖，不是成片时间线；当前支持逐节点生成和导出，尚不支持把所有节点自动合成为成片。
+图中是“蓝色轨道”示例项目：图片为导入的仓库测试素材，视频和旁白尚未生成。连线表达节点依赖；导出成片时，另行选择已完成的视频、排列顺序并添加旁白。
 
 ### 操作演示
 
@@ -32,7 +32,7 @@ CLI 和 Skill 已通过 npm 发布。**Studio 目前需要从源码启动，npm 
 3. 打开准备好的四类节点示例，查看文本、图片、视频与音频的关系。
 4. 选中旁白节点，打开输出设置，调整语速。
 
-**编辑节点不会自动生成媒体。** 需要出图、生成视频或朗读旁白时，再明确让 Codex 生成对应节点，由 CLI 调用你配置的提供方。
+**编辑节点不会自动生成媒体。** 需要出图、生成视频或朗读旁白时，明确让 Codex 生成，或在本地 Studio 的节点编辑器中点击“生成”，由 CLI 调用你配置的提供方。
 
 | 直接修改画面要求 | 设置旁白参数 |
 | --- | --- |
@@ -53,7 +53,7 @@ open-canvas --help
 npm 包名是 `open-canvas-cli`，安装后的命令是 `open-canvas`。在选定目录中创建空项目：
 
 ```sh
-open-canvas init ./my-canvas --title "我的画布"
+open-canvas init ./my-canvas --title "我的画布" --open
 open-canvas context --project ./my-canvas
 ```
 
@@ -128,27 +128,37 @@ mock 生成确定性占位素材；音频是一秒静音，不是合成语音，
 
 ## 四、启动 Studio
 
-Studio 提供可拖动、缩放、连线的无限画布。先克隆公开仓库并启动开发服务：
-
-```sh
-git clone https://github.com/tracyxiong1/open-canvas.git
-cd open-canvas
-npm ci
-npm run build
-npm run dev --workspace @open-canvas/preview -- --host 127.0.0.1 --port 4173 --strictPort
-```
-
-保持服务运行，在另一个终端打开之前创建的项目。将 `/absolute/path/to/my-canvas` 替换为项目的绝对路径：
+安装 CLI 后，用一条命令打开已有本地项目：
 
 ```sh
 open-canvas open --project /absolute/path/to/my-canvas
 ```
 
-`open` 启动单项目的本地桥接，并在浏览器中打开 Studio。默认 Studio 地址是 `http://127.0.0.1:4173/`；其他本地地址可通过 `--url` 指定，只获取链接可添加 `--no-open`。该命令不会启动 Studio 开发服务。
+`open` 在回环地址的空闲端口启动 Studio 和单项目服务，并自动打开浏览器。只获取链接可添加 `--no-open`。源码开发时仍可通过 `--url` 连接另行启动的 Vite 服务。
 
 在 Studio 中点击“保存本地项目”写回磁盘。CLI 更新项目后，Studio 在没有未保存编辑时自动加载新版本；存在未保存编辑时，会保留当前内容并提示处理外部更新。
 
-直接访问 Studio 地址会打开临时空画布。“导出 JSON”下载项目文档，不包含媒体文件。桥接链接含本地访问令牌，不应公开分享。更多操作见 [Studio 使用说明](packages/preview/README.md)。
+将图片、视频或音频拖入画布即可创建带素材的节点，也可以在节点编辑器点击“导入”追加结果。“项目”菜单提供：
+
+- **导出完整项目**：下载 `.ocanvas` 项目包，包含项目文档和媒体字节。通过“打开”选择项目包，会在原项目旁恢复到新目录。
+- **导出成片**：勾选视频、调整顺序、选择旁白和音量，输出 MP4。使用各节点当前选中的历史结果；旁白从片头开始，超出画面长度的部分裁去。
+
+“导出 JSON”只下载文档。单个素材导入上限 256 MiB；项目包媒体总量上限 4 GiB，浏览器恢复的压缩包上限 1 GiB。更大的包可使用 CLI 恢复。桥接链接含本地访问令牌，不应公开分享。更多操作见 [Studio 使用说明](packages/preview/README.md)。
+
+相同操作也可从 CLI 执行：
+
+```sh
+open-canvas media import --project ./my-canvas --file ./clip.mp4
+open-canvas project pack --project ./my-canvas --output ./my-canvas.ocanvas
+open-canvas project unpack --file ./my-canvas.ocanvas --project ./restored-canvas --open
+open-canvas render --project ./my-canvas --nodes <video-id-1>,<video-id-2> --audio <audio-id> --output ./film.mp4
+```
+
+成片输出为 H.264/AAC MP4，支持横屏、竖屏和方形画面，自动保留比例并补边。安装包通过平台依赖提供 FFmpeg/FFprobe；自备工具可设置 `OPEN_CANVAS_FFMPEG` 和 `OPEN_CANVAS_FFPROBE`。
+
+![在 Studio 中选择视频、旁白和音量，导出 MP4](docs/qa/studio-p0-2026-09-30/desktop-render.png)
+
+[安装包、真实生成、项目恢复与成片验收记录](docs/qa/studio-p0-2026-09-30/README.md)
 
 ## 五、当前能力
 
@@ -161,7 +171,7 @@ open-canvas open --project /absolute/path/to/my-canvas
 
 媒体节点支持多次生成、历史结果选择和单节点导出。参考素材、可复用创作方向和结果历史属于当前项目。
 
-当前不包含独立 LLM 聊天节点、音乐生成、声音克隆、完整时间线剪辑、成片合成渲染或全局素材库。旧项目中的脚本、角色、分析、剪辑等节点可以继续读取和编辑，新建菜单只提供上述四类节点。
+当前不包含独立 LLM 聊天节点、音乐生成、声音克隆、完整时间线剪辑或全局素材库。旧项目中的脚本、角色、分析、剪辑等节点可以继续读取和编辑，新建菜单只提供上述四类节点。
 
 ## 六、配置真实生成
 
@@ -177,14 +187,16 @@ open-canvas open --project /absolute/path/to/my-canvas
 配置好环境变量后，查看 CLI 的安全配置和凭证可用状态：
 
 ```sh
-open-canvas provider list
+open-canvas provider list --env-file /absolute/path/to/private.env
 ```
 
 `provider list` 不显示密钥，也不验证远端账户权限或模型可用性。未指定路由的节点在执行 `generate` 时自动选择符合要求的已配置真实提供方，可能产生费用；没有可用路由时失败，不会回退到 mock。
 
-自定义提供方实例使用 `--provider-config <path>` 或 `OPEN_CANVAS_PROVIDER_CONFIG`。配置只记录实例 ID、adapter、模型 ID、优先级和凭证环境变量名等安全信息。详见 [Provider 契约](docs/provider-contract.md)。
+自定义提供方实例使用 `--provider-config <path>` 或 `OPEN_CANVAS_PROVIDER_CONFIG`。配置只记录实例 ID、adapter、模型 ID、优先级和凭证环境变量名等安全信息。Ark 实例可通过 `baseUrl` 指定 HTTPS API 根地址；该地址不会写入画布。详见 [Provider 契约](docs/provider-contract.md)。
 
-Studio 的“应用提示词”保存节点修改，“重新生成”将节点准备为待生成状态；实际生成请求由 Codex/CLI 执行。TTS 节点的正文用于朗读。语音同步请求中断后不会自动重发，原请求可能已计费。
+用 `open-canvas open --project ./my-canvas --env-file /absolute/path/to/private.env --provider-config /absolute/path/to/providers.json` 启动可生成的本地 Studio。凭证只进入本地服务进程，浏览器不读取密钥。“应用提示词”只修改文档，“生成”先保存编辑再显式发起请求。
+
+视频轮询中断后，点击“继续查询”或再次执行相同节点的 `generate` 会查询原任务。若请求已发出但尚未收到任务 ID，恢复时会报告完成状态未知，不会自动重复提交。TTS 是同步接口，中断后也需要检查原请求再明确发起新尝试。
 
 ## 七、开发与验证
 
