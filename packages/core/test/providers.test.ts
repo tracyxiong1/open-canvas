@@ -421,6 +421,25 @@ test("Ark Seedance 2.5 accepts its documented 30-second upper duration", () => {
   });
 });
 
+test("Ark uses an explicit HTTPS API root and current landscape size without exposing configuration in its manifest", async () => {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const adapter = new VolcengineArkAdapter({ baseUrl: "https://ark.example.test/api/v3/", fetcher: async (url, init) => {
+    calls.push({ url: String(url), init });
+    return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from("image").toString("base64") }] }));
+  } });
+  await adapter.submit({ ...imageRequest, requirements: { aspectRatio: "16:9" } }, DEFAULT_ARK_SEEDREAM_MODEL, {
+    credential: createProviderCredential("synthetic-key"),
+  });
+  assert.equal(calls[0]!.url, "https://ark.example.test/api/v3/images/generations");
+  assert.equal(JSON.parse(String(calls[0]!.init!.body)).size, "2560x1440");
+  assert.equal(calls[0]!.init!.redirect, "error");
+  assert.ok(calls[0]!.init!.signal);
+  assert.doesNotMatch(JSON.stringify(adapter.manifest), /example.test|synthetic-key/);
+  for (const baseUrl of ["http://ark.example.test", "https://user:password@ark.example.test", "https://ark.example.test?key=secret"]) {
+    assert.throws(() => new VolcengineArkAdapter({ baseUrl }), /HTTPS/);
+  }
+});
+
 test("routing skips Ark video before persisting a job when two image references are selected", () => {
   const route = selectProviderRoute([new VolcengineArkAdapter(), new GeminiOmniVideoAdapter()], {
     request: {

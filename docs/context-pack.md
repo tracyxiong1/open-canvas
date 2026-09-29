@@ -8,7 +8,8 @@ Build a new AI video creation product around an infinite canvas. Users create an
 
 The current node scope is text, image, video and audio (confirmed 2026-09-15).
 Audio covers text-to-speech, project-local import, playback and export; music,
-voice cloning and composition rendering are excluded. Legacy context roles
+voice cloning and professional timeline editing are excluded. The current P0 also includes
+explicit ordered video assembly with optional narration, exported as MP4. Legacy context roles
 remain readable/editable but are hidden from creation menus. See
 `docs/four-node-context.md` for the original gap inventory and acceptance scope.
 
@@ -68,7 +69,9 @@ performs that explicit operation and leaves unrelated nodes and drafts intact.
 - `main` is the integrated baseline. Feature work is delivered through focused branches and Draft PRs.
 - The shared command core is the only mutation implementation used by the CLI and browser studio.
 - The public npm package `open-canvas-cli` bundles Core and the canonical
-  `skills/open-canvas` source, and exposes the `open-canvas` command.
+  `skills/open-canvas` source and the built Studio, and exposes the `open-canvas` command.
+  `init --open` creates and opens a project; `open` serves Studio without Vite.
+  `media import`, `project pack/unpack`, and `render` share the same project store.
   Build an installable tarball with `npm run pack:cli`; it works without
   a source checkout. After a global npm install, `open-canvas skill install`
   installs the Skill under the local Codex skills directory (or `--dir`).
@@ -86,7 +89,7 @@ Reference products inform interaction anatomy only; brand, protected assets, pri
 
 ## Open decisions
 
-- Export container and encoding behavior.
+- Future editing features beyond ordered clips and narration (current export is H.264/AAC MP4).
 - Final product name and visual identity.
 
 ## Provider decision

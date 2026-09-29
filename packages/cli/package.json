@@ -19,7 +19,7 @@
     "open-canvas": "./bin/open-canvas.js"
   },
   "scripts": {
-    "build": "npm run build --workspace @open-canvas/core && node scripts/build.mjs",
+    "build": "npm run build --workspace @open-canvas/preview && node scripts/build.mjs",
     "prepack": "npm run build",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --import tsx --test test/**/*.test.ts",
@@ -27,7 +27,9 @@
   },
   "devDependencies": {
     "@open-canvas/core": "0.1.0",
-    "esbuild": "^0.28.2"
+    "@types/tar-stream": "^3.1.5",
+    "esbuild": "^0.28.2",
+    "tar-stream": "^3.2.1"
   },
   "repository": {
     "type": "git",
@@ -37,5 +39,9 @@
   "homepage": "https://github.com/tracyxiong1/open-canvas#readme",
   "bugs": {
     "url": "https://github.com/tracyxiong1/open-canvas/issues"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2"
   }
 }

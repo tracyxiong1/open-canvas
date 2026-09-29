@@ -710,7 +710,7 @@ describe("editable open canvas", () => {
 
     expect(screen.getByRole("dialog", { name: "输出设置" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /图片节点 2，待生成/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/1152 × 2048 · 2 张/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1440 × 2560 · 2 张/).length).toBeGreaterThan(0);
     expect(screen.getByText("未保存")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "撤销" }));

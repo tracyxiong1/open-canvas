@@ -24,7 +24,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       continue;
     }
     const name = value.slice(2);
-    if (name === "no-open" || name === "help" || name === "version") {
+    if (name === "no-open" || name === "open" || name === "help" || name === "version") {
       flags.set(name, true);
       continue;
     }

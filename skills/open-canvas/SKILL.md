@@ -92,11 +92,20 @@ routing layer rather than inventing a branded model choice.
 - For a revision such as “make shot 2 night”, update only that node and inspect
   the affected subgraph. Use `draft copy` first when the user requests a variation
   or preservation of the original draft.
-- Use `open --no-open` to obtain a local Studio URL backed by a loopback bridge
-  for that project. The npm CLI does not include a Studio server: use an
-  already-running local Studio with `--url`, or start the Studio through the repository's preview command
-  when a visible canvas is needed; the Studio's explicit Save control writes
-  the current validated document back through the CLI persistence boundary.
+- Use `open --no-open` to obtain a local Studio URL. The installed CLI includes
+  Studio and its project service; no source checkout or Vite server is needed.
+  The Studio's Save control writes the validated document back to the project.
+- Use `media import --project <dir> --file <path>` to create a media node, or add
+  `--node <id>` to append a result to an existing matching node. Bytes stay local.
+- On an explicit project-transfer request, use `project pack --project <dir>
+  --output <file.ocanvas>` and `project unpack --file <file.ocanvas> --project
+  <new-dir>`. The package contains declared media bytes and the document;
+  configuration and credentials are excluded. Restore never overwrites a directory.
+- On an explicit film-export request, use `render --project <dir> --nodes
+  <ordered-video-node-ids> --audio <optional-audio-node-id> --output <film.mp4>`.
+  The supplied order and each node's selected result determine the film. Narration
+  starts at zero and is trimmed to the picture length. Omit `--audio` for no narration.
+  This is an export operation, not a new canvas node or automatic graph execution.
 
 ## Generation boundary
 
@@ -130,7 +139,9 @@ The checked-in CLI has these executable BYOK routes. Users can supply a
 non-secret provider configuration with `generate --provider-config <path>` or
 `OPEN_CANVAS_PROVIDER_CONFIG`; use `provider list` to inspect the effective
 safe metadata. The JSON config may select built-in adapters, stable provider
-IDs, model/endpoint IDs, priority, and a credential environment-variable name.
+IDs, model/endpoint IDs, priority, a credential environment-variable name and
+an explicit HTTPS `baseUrl` for Ark. Pass a user-owned private env file via
+`--env-file <path>` to `open` or `generate`; never display its contents.
 It must never contain an API key or token.
 
 - `volcengine-ark` / `doubao-seedream-5-0-260128`: direct image generation

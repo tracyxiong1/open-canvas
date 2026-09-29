@@ -35,9 +35,10 @@
   composer; do not preselect a node on initial load.
 - The current creation palette contains only text, image, video, and audio.
   Audio starts with text-to-speech, local import and playback; music generation,
-  voice cloning and timeline rendering are out of scope. Keep legacy context
+  voice cloning and professional timeline editing are out of scope. Basic ordered
+  video assembly with optional narration and MP4 export is in scope. Keep legacy context
   and composition nodes readable and editable without exposing new palette entries.
-  Local file import belongs to the CLI or a node-level action. Result history
+  Local file import belongs to the CLI, canvas drop action or a node-level action. Result history
   stays on its originating node, including explicit selection for downstream use.
 
 ## Delivery

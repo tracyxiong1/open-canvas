@@ -420,7 +420,7 @@ function providerFailure(provider: string, status: number): ProviderAdapterError
   const rejected = status >= 400 && status < 500;
   return new ProviderAdapterError(
     rejected ? "provider_rejected" : "provider_unavailable",
-    !rejected,
+    !rejected || status === 429,
     provider + " request failed with HTTP " + String(status),
   );
 }
@@ -433,7 +433,7 @@ async function requestJson(
 ): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetcher(url, init);
+    response = await fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(300_000) });
   } catch {
     throw new ProviderAdapterError("provider_unavailable", true, provider + " request could not be reached");
   }
@@ -1031,8 +1031,8 @@ export const DEFAULT_ARK_SEEDANCE_MODEL = "doubao-seedance-2-5-260628";
 const ARK_API_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const ARK_IMAGE_PRESET_SIZES = [
   { width: 2048, height: 2048 },
-  { width: 2048, height: 1152 },
-  { width: 1152, height: 2048 },
+  { width: 2560, height: 1440 },
+  { width: 1440, height: 2560 },
 ] as const;
 // Seedance 2.5 accepts whole-second video durations from 4 through 30.
 const ARK_VIDEO_DURATIONS = [
@@ -1043,6 +1043,8 @@ const ARK_VIDEO_DURATIONS = [
 export interface VolcengineArkAdapterOptions {
   providerId?: string;
   credentialEnv?: string;
+  /** Explicit HTTPS Ark API root for this user-configured provider instance. */
+  baseUrl?: string;
   /**
    * A public model identifier or a user-owned Ark endpoint identifier. Model
    * identifiers are configuration, not credentials, and remain outside the
@@ -1065,9 +1067,9 @@ function arkImageSize(request: GenerationRequest): string {
   if (width !== undefined && height !== undefined) return String(width) + "x" + String(height);
   switch (aspectRatio) {
     case "16:9":
-      return "2048x1152";
+      return "2560x1440";
     case "9:16":
-      return "1152x2048";
+      return "1440x2560";
     case "1:1":
     default:
       return "2048x2048";
@@ -1238,8 +1240,14 @@ export class VolcengineArkAdapter implements ProviderAdapter {
   readonly manifest: ProviderManifest;
   readonly #jobs = new Map<string, StoredArtifact>();
   readonly #fetch: FetchLike;
+  readonly #baseUrl: string;
 
   constructor(options: VolcengineArkAdapterOptions = {}) {
+    const baseUrl = new URL(options.baseUrl ?? ARK_API_BASE_URL);
+    if (baseUrl.protocol !== "https:" || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash) {
+      throw new Error("Ark baseUrl must be an HTTPS URL without credentials, query or fragment");
+    }
+    this.#baseUrl = baseUrl.href.replace(/\/$/, "");
     const imageModelId = configuredModelId(options.imageModelId, DEFAULT_ARK_SEEDREAM_MODEL, "Ark image model identifier");
     const videoModelId = configuredModelId(options.videoModelId, DEFAULT_ARK_SEEDANCE_MODEL, "Ark video model identifier");
     if (imageModelId === undefined && videoModelId === undefined) {
@@ -1315,7 +1323,7 @@ export class VolcengineArkAdapter implements ProviderAdapter {
     const payload = await requestJson(
       this.#fetch,
       "Ark video",
-      ARK_API_BASE_URL + "/contents/generations/tasks/" + encodeURIComponent(taskId),
+      this.#baseUrl + "/contents/generations/tasks/" + encodeURIComponent(taskId),
       { method: "GET", headers: { Authorization: "Bearer " + credential } },
     );
     return this.snapshotForVideoTask(providerJobId, arkVideoTask(payload));
@@ -1338,7 +1346,7 @@ export class VolcengineArkAdapter implements ProviderAdapter {
     const payload = await requestJson(
       this.#fetch,
       "Ark image",
-      ARK_API_BASE_URL + "/images/generations",
+      this.#baseUrl + "/images/generations",
       {
         method: "POST",
         headers: {
@@ -1385,7 +1393,7 @@ export class VolcengineArkAdapter implements ProviderAdapter {
     const payload = await requestJson(
       this.#fetch,
       "Ark video",
-      ARK_API_BASE_URL + "/contents/generations/tasks",
+      this.#baseUrl + "/contents/generations/tasks",
       {
         method: "POST",
         headers: {

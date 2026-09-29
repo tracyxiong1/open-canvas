@@ -4,6 +4,15 @@ Studio 是项目文档的独立 React Flow 编辑器。浏览器与 CLI 共用 `
 
 ## 一、启动与项目加载
 
+安装 CLI 后即可创建或打开本地 Studio：
+
+```sh
+open-canvas init ./my-canvas --title "我的画布" --open
+open-canvas open --project ./my-canvas
+```
+
+Studio 随 CLI 分发，默认使用回环地址的空闲端口，不需要开发服务。下面的 Vite 命令只用于源码开发。
+
 从仓库根目录执行：
 
 ```sh
@@ -20,7 +29,7 @@ npm run dev --workspace @open-canvas/preview -- --host 127.0.0.1 --port 4173 --s
 node packages/cli/bin/open-canvas.js open --project <project-directory>
 ```
 
-替换 `<project-directory>` 为已有项目目录。创建项目的步骤见 [根 README](../../README.md)。`open` 启动回环地址上的单项目桥接并打开页面，不启动 Vite；默认连接 4173 端口。其他端口使用 `--url http://127.0.0.1:<port>/`，只获取链接使用 `--no-open`。
+替换 `<project-directory>` 为已有项目目录。创建项目的步骤见 [根 README](../../README.md)。`open` 默认打开包内 Studio。源码开发时用 `--url http://127.0.0.1:4173/` 连接 Vite，只获取链接使用 `--no-open`。
 
 桥接仅暴露该项目及其声明的资产。点击“保存本地项目”才会经 CLI 校验、revision 冲突检查和原子写入保存到磁盘。CLI 更新项目时，Studio 在没有未保存编辑的情况下自动刷新；存在本地编辑时保留内容并提示外部版本变化。桥接链接包含访问令牌，不应公开分享。
 
@@ -33,11 +42,11 @@ node packages/cli/bin/open-canvas.js open --project <project-directory>
 - 音频：编辑朗读正文、音色、语速及输出格式，使用原生播放器预览。TTS 输出为 WAV/MP3，导入格式能否播放取决于浏览器编解码支持。
 - 共用操作：节点移动、连线、删除、项目内分组、撤销/重做、媒体历史结果选择和预览下载。行内编辑器跟随节点，水平边界限制保证窄屏控件可触达。
 
-“应用提示词”更新文档，“重新生成”将节点准备为待生成；实际付费生成由 Codex/CLI 显式执行。浏览器不读取提供方 API key。音频预览区区分 AI 合成声音、导入素材与 mock 静音测试素材。
+“应用提示词”更新文档；本地项目的“生成”按钮先保存编辑，再由本地 CLI 服务调用用户配置的提供方。“继续查询”恢复原视频任务。浏览器不读取提供方 API key。音频预览区区分 AI 合成声音、导入素材与 mock 静音测试素材。
 
 选择历史输出后，该输出用于预览、导出及下游引用；当前提示词和原始任务不变，下游节点失效。选择旧输出不会把当前参数标记为已经生成成功。
 
-本地素材导入使用 CLI 的 `asset import`；把素材作为节点结果使用 `result import`。完整命令见 [四类节点使用说明](../../docs/four-node-usage.md)。结果历史属于原节点，参考素材属于当前项目，没有全局素材或历史面板。音乐生成、声音克隆、波形剪辑及成片合成渲染不在当前范围。
+将文件拖入画布可创建媒体节点，也可在节点编辑器点击“导入”追加结果；对应 CLI 命令是 `media import`。只登记参考素材可继续使用 `asset import`。完整命令见 [四类节点使用说明](../../docs/four-node-usage.md)。结果历史属于原节点，参考素材属于当前项目，没有全局素材或历史面板。“项目”菜单可导出包含媒体的 `.ocanvas` 包，或选择视频顺序、旁白与音量导出 MP4。打开项目包会恢复到新目录；原项目保留。音乐生成、声音克隆和波形剪辑不在当前范围。
 
 `src/demo-assets.js` 仅为仓库示例提供隔离的视觉测试素材映射，不是默认项目或真实生成服务。
 

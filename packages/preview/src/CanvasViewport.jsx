@@ -149,10 +149,10 @@ const LOCAL_REFERENCE_CONTEXT_ROLES = new Set([
 ]);
 
 // These common presets are supported by both of the current image adapters.
-// Existing documents keep their own explicit dimensions and remain executable.
+// Existing documents retain their dimensions; routing checks provider support.
 const IMAGE_OUTPUT_PRESETS = Object.freeze({
-  "16:9": Object.freeze({ width: 2048, height: 1152 }),
-  "9:16": Object.freeze({ width: 1152, height: 2048 }),
+  "16:9": Object.freeze({ width: 2560, height: 1440 }),
+  "9:16": Object.freeze({ width: 1440, height: 2560 }),
   "1:1": Object.freeze({ width: 2048, height: 2048 }),
 });
 const IMAGE_ASPECT_RATIOS = Object.freeze(["16:9", "9:16", "1:1"]);
@@ -306,9 +306,10 @@ function NodeMedia({ node, kind, onFocusNode, onOpenPreview }) {
   );
 }
 
-function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript }) {
+function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, onGenerate, onImportFiles, isWorking }) {
   const canEditPrompt = node.kind === "shot" || isContextNode(node) || (node.spec.role === "composition" && Boolean(node.spec.prompt));
   const composerRef = useRef(null);
+  const mediaInputRef = useRef(null);
   const [prompt, setPrompt] = useState(canEditPrompt ? node.spec.prompt : "");
   const [expanded, setExpanded] = useState(false);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -737,7 +738,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
   };
   const routeLabel = node.route?.providerId === "mock"
     ? "本地演示"
-    : node.route?.modelId ?? "自动路由";
+    : node.route?.providerId === "local-import" ? "本地导入" : node.route?.modelId ?? "自动路由";
   const canEditOutputSettings = node.spec.kind === "shot" && Boolean(onUpdateRequirements);
   const selectedAspectRatio = requirements.aspectRatio ?? "16:9";
   const selectedImageCount = requirements.count ?? 1;
@@ -850,7 +851,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
           </select></label>
           <label>语速<input aria-label="语速" type="number" min="0.25" max="4" step="0.25" value={requirements.speed ?? 1} onChange={(event) => { const speed = Number(event.target.value); if (speed >= 0.25 && speed <= 4) onUpdateRequirements(node.id, { ...requirements, speed }); }} /></label>
           <label>格式<select aria-label="音频格式" value={requirements.mediaType ?? "audio/wav"} onChange={(event) => onUpdateRequirements(node.id, { ...requirements, mediaType: event.target.value })}><option value="audio/wav">WAV</option><option value="audio/mpeg">MP3</option>{requirements.mediaType && !["audio/wav", "audio/mpeg"].includes(requirements.mediaType) ? <option value={requirements.mediaType}>当前导入格式</option> : null}</select></label>
-          <small>文字转语音 · AI 合成声音。生成需从 Codex 或 CLI 执行。</small>
+          <small>文字转语音 · AI 合成声音。编辑正文不会自动生成。</small>
         </div>
       ) : kind === "image" ? (
         <>
@@ -1142,7 +1143,11 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
         </div>
         <footer className="composer-tools composer-tools-media">
           <div className="composer-settings-group">
-            {node.status !== "queued" && node.status !== "running" && (node.status === "succeeded" || node.status === "failed") ? <button type="button" className="composer-readout" aria-label="准备重新生成" onClick={() => onResetGeneration?.(node.id)}><ArrowClockwise />重新生成</button> : null}
+            {onImportFiles && node.spec.kind === "shot" ? <>
+              <button className="composer-readout" type="button" aria-label="导入到当前节点" disabled={isWorking} onClick={() => mediaInputRef.current?.click()}>导入</button>
+              <input ref={mediaInputRef} className="visually-hidden" type="file" accept={`${node.spec.mediaKind}/*`} aria-label="导入节点媒体文件" onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; if (files.length) onImportFiles(files, {}, node.id); }} />
+            </> : null}
+            {!onGenerate && node.status !== "queued" && node.status !== "running" && (node.status === "succeeded" || node.status === "failed") ? <button type="button" className="composer-readout" aria-label="准备重新生成" onClick={() => onResetGeneration?.(node.id)}><ArrowClockwise />重新生成</button> : null}
             <span className="composer-readout composer-route"><Sparkle weight="fill" aria-hidden="true" /><span>{routeLabel}</span></span>
             <span className="composer-divider" />
             {failure ? (
@@ -1242,6 +1247,7 @@ function NodeComposer({ node, kind, graph, assets = [], onOpenPreview, onUpdateP
               </button>
             ) : <span className="composer-readout composer-output-spec"><Rectangle weight="regular" aria-hidden="true" /><span>{outputSpec}</span></span>}
           </div>
+          {onGenerate && node.spec.kind === "shot" ? <button type="button" className="composer-generate" disabled={isWorking || !prompt.trim()} onClick={() => onGenerate(node.id, prompt)} aria-label={node.status === "queued" || node.status === "running" ? "继续查询生成" : "生成媒体"}>{node.status === "queued" || node.status === "running" ? "继续查询" : "生成"}</button> : null}
           <button
             className="composer-submit"
             type="submit"
@@ -1479,6 +1485,9 @@ function CanvasNode({ data, selected }) {
     onUpdateRequirements,
     onSelectOutput,
     onResetGeneration,
+    onGenerate,
+    onImportFiles,
+    isWorking,
     onExpandScript,
     assets,
     viewportZoom = DEFAULT_CANVAS_ZOOM,
@@ -1563,6 +1572,9 @@ function CanvasNode({ data, selected }) {
               onUpdateRequirements={onUpdateRequirements}
               onSelectOutput={onSelectOutput}
               onResetGeneration={onResetGeneration}
+              onGenerate={onGenerate}
+              onImportFiles={onImportFiles}
+              isWorking={isWorking}
               onExpandScript={onExpandScript}
             />
           </NodeToolbar>
@@ -1926,7 +1938,7 @@ function useNarrowCanvasViewport() {
   return isNarrowViewport;
 }
 
-function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeIds = [], onSelectNodes, onOpenPreview, onMoveNodes, onMoveGroup, onCreateGroup, onCopyNodes, onPasteNodes, canPasteNodes = false, onAddNode, onConnectNodes, onConnectionRejected, onDeleteEdges, onDeleteNodes, onDuplicateNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, onCreateVariation, onArrange, canUndo, canRedo, onUndo, onRedo }) {
+function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeIds = [], onSelectNodes, onOpenPreview, onMoveNodes, onMoveGroup, onCreateGroup, onCopyNodes, onPasteNodes, canPasteNodes = false, onAddNode, onConnectNodes, onConnectionRejected, onDeleteEdges, onDeleteNodes, onDuplicateNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, onCreateVariation, onArrange, canUndo, canRedo, onUndo, onRedo, onImportFiles, onGenerate, isWorking }) {
   const viewportRef = useRef(null);
   const isNarrowViewport = useNarrowCanvasViewport();
   const authoredGraphSpan = useMemo(() => {
@@ -2029,7 +2041,7 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
       window.removeEventListener("resize", syncComposerPosition);
     };
   }, [selectedNode, isNarrowViewport, syncComposerPosition]);
-  const nodeData = useMemo(() => ({ assets, onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, graph: draft, viewportZoom: zoom, composerPosition, composerAlign }), [assets, composerAlign, composerPosition, draft, focusNode, onExpandScript, onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, zoom]);
+  const nodeData = useMemo(() => ({ assets, onOpenPreview, onFocusNode: focusNode, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onExpandScript, onImportFiles, onGenerate, isWorking, graph: draft, viewportZoom: zoom, composerPosition, composerAlign }), [assets, composerAlign, composerPosition, draft, focusNode, onExpandScript, onOpenPreview, onUpdatePrompt, onUpdateReferenceAssets, onUpdateInputAssets, onUpdateRequirements, onSelectOutput, onResetGeneration, onImportFiles, onGenerate, isWorking, zoom]);
   const projectedNodes = useMemo(
     () => toFlowNodes(draft, selectedNodeId, nodeData, CANVAS_PRESENTATION_SCALE, selectedNodeIds),
     [draft, nodeData, selectedNodeId, selectedNodeIds],
@@ -2385,7 +2397,14 @@ function CanvasViewportInner({ draft, assets = [], selectedNodeId, selectedNodeI
   }, [draft, onAddNode, screenToFlowPosition]);
 
   return (
-    <section ref={viewportRef} className={`canvas-viewport tool-${tool}`} data-testid="canvas-viewport" data-view={`0,0,${zoom.toFixed(3)}`} aria-label="无限画布。拖动节点编辑布局；拖动空白处、空格拖动或双指滑动可平移画布；按住 Command 或 Control 滚轮，或使用双指捏合可缩放；按住 Shift 可框选节点。">
+    <section ref={viewportRef} className={`canvas-viewport tool-${tool}`} data-testid="canvas-viewport" data-view={`0,0,${zoom.toFixed(3)}`} aria-label="无限画布。拖动节点编辑布局；拖动空白处、空格拖动或双指滑动可平移画布；按住 Command 或 Control 滚轮，或使用双指捏合可缩放；按住 Shift 可框选节点。"
+      onDragOver={(event) => { if (onImportFiles && Array.from(event.dataTransfer.types).includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length || !onImportFiles) return;
+        event.preventDefault(); event.stopPropagation();
+        const point = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+        onImportFiles(Array.from(event.dataTransfer.files), { x: Math.round(point.x / CANVAS_PRESENTATION_SCALE), y: Math.round(point.y / CANVAS_PRESENTATION_SCALE) });
+      }}>
       <ReactFlow
         key={draft.id}
         nodes={nodes}
