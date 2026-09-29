@@ -11,6 +11,35 @@
 
 CLI 和 Skill 已通过 npm 发布。**Studio 目前需要从源码启动，npm 包不包含 Studio 服务。**
 
+## 先看它能做什么
+
+例如，你想做一段视觉短片：在 Codex 中说“增加一个图片节点，先不要生成”，再说“把它改成清晨”。Open Canvas 会把这些要求落实为可编辑的画布节点。你也可以在 Studio 中直接改提示词，把文字方向、参考图、视频镜头和旁白放在一起，用连线组织它们的上下文关系。
+
+![Open Canvas 画布总览：文本创作方向连接参考图和旁白，参考图连接视频镜头](docs/qa/readme-demo/canvas-overview.png)
+
+图中是“蓝色轨道”示例项目：图片为导入的仓库测试素材，视频和旁白尚未生成。连线表达节点依赖，不是成片时间线；当前支持逐节点生成和导出，尚不支持把所有节点自动合成为成片。
+
+### 操作演示
+
+[![Studio 操作录屏：新增图片节点、修改提示词、打开示例画布并设置旁白参数](docs/qa/readme-demo/studio-walkthrough.gif)](docs/qa/readme-demo/studio-walkthrough.mp4)
+
+[观看或下载清晰版操作视频（MP4）](docs/qa/readme-demo/studio-walkthrough.mp4) · [演示素材与复现说明](docs/qa/readme-demo/README.md)
+
+录屏展示当前 Studio 的实际操作，无需 API key：
+
+1. 从空画布的“添加节点”菜单新建图片节点。
+2. 输入雨夜街道的提示词，点击“应用提示词”；随后改成清晨，再次应用。
+3. 打开准备好的四类节点示例，查看文本、图片、视频与音频的关系。
+4. 选中旁白节点，打开输出设置，调整语速。
+
+**编辑节点不会自动生成媒体。** 需要出图、生成视频或朗读旁白时，再明确让 Codex 生成对应节点，由 CLI 调用你配置的提供方。
+
+| 直接修改画面要求 | 设置旁白参数 |
+| --- | --- |
+| ![图片节点的行内编辑器，提示词已从雨夜改为清晨](docs/qa/readme-demo/prompt-editing.png) | ![音频节点的朗读正文与音色、语速、格式设置](docs/qa/readme-demo/audio-settings.png) |
+
+想用自然语言操作，从下面的安装步骤开始，再看“通过 Codex Skill 使用”；想直接操作画布，可跳到“启动 Studio”。
+
 ## 一、安装与快速开始
 
 需要 **Node.js 22.16 或更高版本**和 npm。

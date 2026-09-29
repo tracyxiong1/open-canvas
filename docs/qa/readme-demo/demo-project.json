@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "revision": 9,
+  "project": {
+    "id": "project_01a0ebf9-05fc-72ee-84be-ad543d5e93ac",
+    "title": "蓝色轨道 · 创作演示",
+    "createdAt": "2026-09-29T07:02:40.891Z",
+    "updatedAt": "2026-09-29T07:02:41.656Z"
+  },
+  "activeDraftId": "draft_01a0ebf9-05fb-77ff-a733-72e330ed4b04",
+  "drafts": [
+    {
+      "id": "draft_01a0ebf9-05fb-77ff-a733-72e330ed4b04",
+      "title": "Main",
+      "revision": 9,
+      "createdAt": "2026-09-29T07:02:40.891Z",
+      "updatedAt": "2026-09-29T07:02:41.656Z",
+      "nodes": [
+        {
+          "id": "node_01a0ebf9-0661-7098-9b03-c2a0032f9564",
+          "title": "创作方向",
+          "position": {
+            "x": 0,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "composition",
+            "mediaType": "text/plain",
+            "role": "text",
+            "prompt": "做一段蓝色轨道的视觉短片。深蓝背景，圆形光环，安静、克制的节奏。"
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:7ebbcfb507eaac90b2177e7972787114f62297dcb6103840fb68a9cf432c4d25",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_01a0ebf9-06c2-77f9-aabe-67e7ef4b2a27",
+          "title": "蓝色轨道 · 参考图",
+          "position": {
+            "x": 440,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "深蓝背景上的蓝色圆形光环，柔和渐变，居中构图。",
+            "mediaKind": "image",
+            "inputAssetIds": []
+          },
+          "execution": {
+            "status": "succeeded",
+            "inputFingerprint": "sha256:e5088362fa94ec6ac22c2631affa295d8599f1d216a22c0782d4dd426737423f",
+            "activeJobId": "job_01a0ebf9-08f6-71b8-bc2d-85a35d2b1b49",
+            "outputAssetIds": [
+              "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8"
+            ]
+          }
+        },
+        {
+          "id": "node_01a0ebf9-0720-769b-98b7-6f66f51aba6c",
+          "title": "镜头 · 缓慢推进",
+          "position": {
+            "x": 880,
+            "y": 0
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "沿用参考图的色彩，镜头缓慢推进，光环轻微流动。",
+            "mediaKind": "video",
+            "inputAssetIds": []
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:c866c4362e8633820c8198c4a9e4930d830acd48dc8eda266fc38ba9f7925de2",
+            "outputAssetIds": []
+          }
+        },
+        {
+          "id": "node_01a0ebf9-077f-71d8-94b1-d391548f2159",
+          "title": "旁白 · 开场",
+          "position": {
+            "x": 440,
+            "y": 420
+          },
+          "specRevision": 1,
+          "spec": {
+            "kind": "shot",
+            "prompt": "从一个想法开始，让画面与声音在这里相遇。",
+            "mediaKind": "audio",
+            "inputAssetIds": []
+          },
+          "execution": {
+            "status": "dirty",
+            "inputFingerprint": "sha256:0a499f1c99f7b9f25082f89fdcb0ae8b5364405bdb38e5283057159df9f18637",
+            "outputAssetIds": []
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_01a0ebf9-07de-727f-8691-3f315d80f06d",
+          "kind": "dependency",
+          "sourceNodeId": "node_01a0ebf9-0661-7098-9b03-c2a0032f9564",
+          "targetNodeId": "node_01a0ebf9-06c2-77f9-aabe-67e7ef4b2a27"
+        },
+        {
+          "id": "edge_01a0ebf9-0838-77ea-b6af-6e7974c8a440",
+          "kind": "dependency",
+          "sourceNodeId": "node_01a0ebf9-06c2-77f9-aabe-67e7ef4b2a27",
+          "targetNodeId": "node_01a0ebf9-0720-769b-98b7-6f66f51aba6c"
+        },
+        {
+          "id": "edge_01a0ebf9-0895-760f-8719-0f356b732a4c",
+          "kind": "dependency",
+          "sourceNodeId": "node_01a0ebf9-0661-7098-9b03-c2a0032f9564",
+          "targetNodeId": "node_01a0ebf9-077f-71d8-94b1-d391548f2159"
+        }
+      ],
+      "jobs": [
+        {
+          "id": "job_01a0ebf9-08f6-71b8-bc2d-85a35d2b1b49",
+          "nodeId": "node_01a0ebf9-06c2-77f9-aabe-67e7ef4b2a27",
+          "attempt": 1,
+          "inputFingerprint": "sha256:e5088362fa94ec6ac22c2631affa295d8599f1d216a22c0782d4dd426737423f",
+          "status": "succeeded",
+          "route": {
+            "providerId": "local-import",
+            "modelId": "external-media-v1",
+            "selectionSource": "registry_default"
+          },
+          "outputAssetIds": [
+            "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8"
+          ],
+          "createdAt": "2026-09-29T07:02:41.653Z",
+          "updatedAt": "2026-09-29T07:02:41.656Z",
+          "providerJobId": "local:df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+          "progress": 1
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset_sha256_df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "kind": "image",
+      "mediaType": "image/png",
+      "byteLength": 1328633,
+      "checksumSha256": "sha256:df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "path": "assets/sha256/df9de1cc8ca62d379819f3fd85d73172ba7b34d070c194b7b312d65b7f8aaba8",
+      "origin": {
+        "kind": "job",
+        "draftId": "draft_01a0ebf9-05fb-77ff-a733-72e330ed4b04",
+        "jobId": "job_01a0ebf9-08f6-71b8-bc2d-85a35d2b1b49"
+      },
+      "createdAt": "2026-09-29T07:02:41.656Z"
+    }
+  ]
+}
