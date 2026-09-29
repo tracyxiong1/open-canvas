@@ -24,10 +24,6 @@ npm exec --yes --registry=https://registry.npmjs.org/ --package=open-canvas-cli 
 也可用 `npm install -g /absolute/path/open-canvas-cli-0.1.0.tgz`
 安装本地打包产物。包名是 `open-canvas-cli`，可执行命令名是 `open-canvas`。
 
-如果已全局安装旧包 `@tracyxiong1/open-canvas`，先执行
-`npm uninstall -g @tracyxiong1/open-canvas`，再安装新包，避免同名命令冲突。
-现有画布项目可以继续使用。
-
 ## Codex Skill
 
 先全局安装 CLI，再执行：

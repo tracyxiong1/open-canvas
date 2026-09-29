@@ -65,8 +65,6 @@ CLI 输出 JSON，便于查看项目、草稿和节点 ID，也便于脚本或�
 npm exec --yes --registry=https://registry.npmjs.org/ --package=open-canvas-cli -- open-canvas --help
 ```
 
-旧包 `@tracyxiong1/open-canvas` 已下架。如果曾全局安装旧包，先运行 `npm uninstall -g @tracyxiong1/open-canvas`，再安装 `open-canvas-cli`，避免同名命令冲突。现有画布项目可以继续使用。
-
 ## 二、通过 Codex Skill 使用
 
 全局安装 CLI 后执行：
