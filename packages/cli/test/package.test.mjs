@@ -42,7 +42,12 @@ test("packed npm CLI works outside the checkout and installs the canonical Skill
     const once = await mkdtemp(join(root, "once-"));
     assert.equal(JSON.parse(runNpm(["exec", "--yes", "--offline", `--package=${tarball}`, "--", "open-canvas", "--version"], once)).version, packageJson.version);
     const project = join(root, "canvas with spaces");
-    const created = cli(["init", project, "--title", "Package QA"]);
+    const created = cli(["init", project, "--title", "Package QA", "--open", "--no-open"]);
+    const initialStop = new URL(new URL(created.url).searchParams.get("project-url"));
+    initialStop.pathname = "/bridge";
+    try {
+      assert.match(await (await fetch(created.url)).text(), /<div id="root">/);
+    } finally { await fetch(initialStop, { method: "DELETE" }); }
     const node = cli(["node", "add", "--project", project, "--kind", "shot", "--media-kind", "audio", "--title", "旁白", "--prompt", "测试", "--provider", "mock"]);
     cli(["node", "update", "--project", project, "--node", node.nodeId, "--prompt", "清晨"]);
     assert.throws(() => cli(["generate", "--project", project, "--node", node.nodeId, "--provider", "mock"]), /node add\/update/);
