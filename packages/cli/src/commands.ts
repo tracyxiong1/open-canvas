@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, extname, join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 
@@ -49,6 +49,10 @@ import {
 
 import { CliUsageError, numberFlag, optionalFlag, requiredFlag, type ParsedArgs } from "./args.js";
 import { startPreviewBridge } from "./preview-bridge.js";
+import { studioDirectory } from "./studio-assets.js";
+import { importCanvasMedia } from "./media-import.js";
+import { packProject, unpackProject } from "./project-archive.js";
+import { renderProject, type RenderOptions } from "./render.js";
 import { cliVersion, installSkill } from "./skill.js";
 import {
   createConfiguredProviderAdapters,
@@ -73,7 +77,7 @@ function isLocalStudioOrigin(url: URL): boolean {
     && (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1" || url.hostname === "[::1]");
 }
 
-async function startDetachedPreviewBridge(projectDirectory: string): Promise<{ bridgeUrl: string; token: string }> {
+async function startDetachedPreviewBridge(projectDirectory: string, providerConfig?: string): Promise<{ bridgeUrl: string; token: string }> {
   const entrypoint = process.argv[1];
   if (!entrypoint) throw new Error("Unable to locate the Open Canvas CLI entrypoint");
   const token = randomBytes(24).toString("base64url");
@@ -84,6 +88,7 @@ async function startDetachedPreviewBridge(projectDirectory: string): Promise<{ b
     "--project", projectDirectory,
     "--token", token,
     "--port", "0",
+    ...(providerConfig ? ["--provider-config", resolve(providerConfig)] : []),
   ], {
     detached: true,
     stdio: ["ignore", "pipe", "ignore"],
@@ -368,9 +373,14 @@ function helpCommand() {
       "result select --project <directory> --node <id> --asset <asset-id>",
       "node add --project <directory> --kind shot --media-kind audio --title <title> --prompt <speech-text> [--voice coral] [--speed 1] [--media-type audio/wav|audio/mpeg]",
       "draft copy --project <directory> --title <title> [--source <id>]",
-      "provider list [--provider-config <path>]",
-      "generate --project <directory> --node <id> [--provider-config <path>]",
-      "open --project <directory> [--no-open]",
+      "provider list [--provider-config <path>] [--env-file <private-path>]",
+      "generate --project <directory> --node <id> [--provider-config <path>] [--env-file <private-path>]",
+      "open --project <directory> [--no-open] [--provider-config <path>] [--env-file <private-path>]",
+      "init <directory> --title <title> --open [--no-open]",
+      "media import --project <directory> --file <path> [--node <id>]",
+      "project pack --project <directory> --output <file.ocanvas>",
+      "project unpack --file <file.ocanvas> --project <new-directory> [--open]",
+      "render --project <directory> --nodes <ordered-video-node-ids> --output <film.mp4> [--audio <node-id>] [--aspect-ratio 16:9|9:16|1:1]",
       "export --project <directory> --draft <id> --output <path> [--node <id>]",
     ],
     localContext: [
@@ -379,7 +389,7 @@ function helpCommand() {
       "Use context before an existing-project edit to obtain semantic nodes, local graph relationships, assets, and safe job state without reading project.json directly.",
       "Use script expand to turn one project-local script node into editable video shots plus explicit dependency and sequence edges.",
       "Import media with asset import, then associate it with a node; no global role or material library is created.",
-      "open starts a loopback bridge for the selected local project; Studio saves explicitly through revision-checked CLI persistence.",
+      "open serves the bundled Studio for the selected local project; Studio saves explicitly through revision-checked CLI persistence.",
     ],
     generation: {
       default: "Selects an eligible configured local BYOK route; it never silently falls back to mock.",
@@ -545,6 +555,26 @@ export async function runCommand(args: ParsedArgs): Promise<unknown> {
   if (args.flags.has("help") || command === "help") return helpCommand();
   if (command === "skill" && subcommand === "install") return installSkill(optionalFlag(args, "dir"));
   if (command === "init") return initCommand(args);
+  if (command === "media" && subcommand === "import") {
+    const result = await importCanvasMedia(resolve(requiredFlag(args, "project")), await readFile(resolve(requiredFlag(args, "file"))), {
+      filename: requiredFlag(args, "file"),
+      ...(optionalFlag(args, "node") ? { nodeId: requiredFlag(args, "node") } : {}),
+      ...(optionalFlag(args, "draft") ? { draftId: requiredFlag(args, "draft") } : {}),
+    });
+    return { nodeId: result.nodeId, revision: result.document.revision };
+  }
+  if (command === "project" && subcommand === "pack") return packProject(resolve(requiredFlag(args, "project")), requiredFlag(args, "output"));
+  if (command === "project" && subcommand === "unpack") {
+    const result = await unpackProject(requiredFlag(args, "file"), requiredFlag(args, "project"));
+    return { projectDirectory: result.projectDirectory, ...(args.flags.has("open") ? await previewCommand(args) as object : {}) };
+  }
+  if (command === "render") return renderProject(resolve(requiredFlag(args, "project")), {
+    nodeIds: requiredFlag(args, "nodes").split(",").map((id) => id.trim()),
+    ...(optionalFlag(args, "draft") ? { draftId: requiredFlag(args, "draft") } : {}),
+    ...(optionalFlag(args, "audio") ? { audioNodeId: requiredFlag(args, "audio") } : {}),
+    ...(optionalFlag(args, "aspect-ratio") ? { aspectRatio: requiredFlag(args, "aspect-ratio") as RenderOptions["aspectRatio"] & string } : {}),
+    originalVolume: numberFlag(args, "original-volume", 1), narrationVolume: numberFlag(args, "narration-volume", 1),
+  }, requiredFlag(args, "output"));
   if (command === "node" && subcommand === "add") return addNodeCommand(args);
   if (command === "node" && subcommand === "update") return updateNodeCommand(args);
   if (command === "node" && subcommand === "delete") return deleteNodeCommand(args);
@@ -577,7 +607,8 @@ async function initCommand(args: ParsedArgs): Promise<unknown> {
     ...(draftTitle === undefined ? {} : { draftTitle }),
   });
   await saveProjectAtomic(resolve(projectDirectory), document, { createOnly: true });
-  return { projectPath: join(resolve(projectDirectory), "project.json"), revision: document.revision, activeDraftId: document.activeDraftId };
+  return { projectPath: join(resolve(projectDirectory), "project.json"), revision: document.revision, activeDraftId: document.activeDraftId,
+    ...(args.flags.has("open") ? await previewCommand({ ...args, flags: new Map([...args.flags, ["project", resolve(projectDirectory)]]) }) as object : {}) };
 }
 
 async function addNodeCommand(args: ParsedArgs): Promise<unknown> {
@@ -1066,13 +1097,14 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
         mediaType: output.mediaType,
         bytes: await collectBytes(runtime.adapter.openArtifact(snapshot.providerJobId, output.artifactId, context)),
       })));
+      document = await loadProject(projectDirectory);
       const completed = completeGeneration(document, {
         draftId: draft.id,
         jobId,
         providerJobId: snapshot.providerJobId,
         artifacts,
       });
-      const assetIds = draftFor(completed, draft.id).nodes.find((candidate) => candidate.id === nodeId)!.execution.outputAssetIds;
+      const assetIds = draftFor(completed, draft.id).jobs.find((candidate) => candidate.id === jobId)!.outputAssetIds;
       const outputAssets = assetIds.map((assetId) => completed.assets.find((candidate) => candidate.id === assetId)!);
       for (const [index, asset] of outputAssets.entries()) {
         await writeAssetBytes(projectDirectory, asset.path, artifacts[index]!.bytes);
@@ -1092,8 +1124,8 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
     };
 
     const persist = async (snapshot: ProviderSnapshot): Promise<void> => {
-      const beforeSnapshot = document;
-      document = applyProviderSnapshot(document, { draftId: draft.id, jobId, snapshot });
+      const beforeSnapshot = await loadProject(projectDirectory);
+      document = applyProviderSnapshot(beforeSnapshot, { draftId: draft.id, jobId, snapshot });
       await saveMutation(projectDirectory, beforeSnapshot, document);
     };
 
@@ -1103,6 +1135,10 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
     // first so a restart never silently sends the same paid speech request again.
     if (resubmit && runtime.adapter instanceof OpenAISpeechAdapter) {
       providerJobId = "openai-speech:" + jobId;
+      await persist({ providerJobId, status: "queued", progress: 0 });
+    } else if (resubmit && runtime.adapter.manifest.providerId !== "mock") {
+      // A crash before the response must not silently submit a second paid request.
+      providerJobId = "submission-pending:" + jobId;
       await persist({ providerJobId, status: "queued", progress: 0 });
     }
     let snapshot: ProviderSnapshot;
@@ -1116,6 +1152,10 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
     } else {
       const resumedProviderJobId = providerJobId;
       if (resumedProviderJobId === undefined) throw new Error("Persisted provider job identifier is missing");
+      if (resumedProviderJobId.startsWith("submission-pending:")) {
+        throw new ProviderAdapterError("provider_protocol", false,
+          "Submission was interrupted before the provider returned a task handle; completion is unknown. No request was resubmitted. Inspect the provider before explicitly generating again.");
+      }
       snapshot = await runtime.adapter.poll(resumedProviderJobId, context);
     }
 
@@ -1138,6 +1178,10 @@ async function generateCommand(args: ParsedArgs): Promise<unknown> {
     return { draftId: draft.id, nodeId, jobId, status: "running", providerJobId, resumable: true };
   } catch (error) {
     const failure = providerFailure(error);
+    if (failure.retryable && providerJobId && /^(ark-video:|gemini-omni:)/.test(providerJobId)) {
+      // Keep the remote task handle: a later explicit generate resumes polling instead of charging again.
+      throw new Error(`${failure.message}; task remains resumable. Run generate on the same node to continue polling.`);
+    }
     try {
       const latest = await loadProject(projectDirectory);
       const latestDraft = draftFor(latest, draft.id);
@@ -1390,12 +1434,13 @@ async function previewCommand(args: ParsedArgs): Promise<unknown> {
   const projectDirectory = resolve(requiredFlag(args, "project"));
   const document = await loadProject(projectDirectory);
   const draft = draftFor(document, optionalFlag(args, "draft"));
-  const base = optionalFlag(args, "url") ?? "http://127.0.0.1:4173/";
-  const url = new URL(base);
-  if (!isLocalStudioOrigin(url)) {
+  const base = optionalFlag(args, "url");
+  if (base && !isLocalStudioOrigin(new URL(base))) {
     throw new CliUsageError("open --url must use a local Studio origin");
   }
-  const bridge = await startDetachedPreviewBridge(projectDirectory);
+  if (!base) await access(join(studioDirectory, "index.html")).catch(() => { throw new Error("Studio assets are missing. Reinstall open-canvas-cli, or build the CLI from source."); });
+  const bridge = await startDetachedPreviewBridge(projectDirectory, optionalFlag(args, "provider-config"));
+  const url = new URL(base ?? `${bridge.bridgeUrl}/`);
   const projectUrl = new URL("/project.json", `${bridge.bridgeUrl}/`);
   projectUrl.searchParams.set("token", bridge.token);
   const assetUrl = new URL("/asset", `${bridge.bridgeUrl}/`);
@@ -1421,6 +1466,12 @@ async function previewBridgeCommand(args: ParsedArgs): Promise<never> {
     projectDirectory,
     token: requiredFlag(args, "token"),
     port,
+    serveStudio: true,
+    generate: (input) => generateCommand({ positionals: ["generate"], flags: new Map<string, string | boolean>([
+      ["project", projectDirectory], ["draft", input.draftId], ["node", input.nodeId], ["expected-project-revision", String(input.baseRevision)],
+      ...(optionalFlag(args, "provider-config") ? [["provider-config", requiredFlag(args, "provider-config")] as [string, string]] : []),
+    ]) }),
+    openProject: (directory) => previewCommand({ positionals: ["open"], flags: new Map([...args.flags, ["project", directory], ["no-open", true]]) }),
   });
   process.stdout.write(`${JSON.stringify({ bridgeUrl: bridge.bridgeUrl })}\n`);
   await new Promise<never>(() => undefined);

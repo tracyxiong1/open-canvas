@@ -49,8 +49,8 @@ test("provider configuration creates a named Ark instance without credentials", 
         aspectRatios: ["1:1", "16:9", "9:16"],
         sizes: [
           { width: 2048, height: 2048 },
-          { width: 2048, height: 1152 },
-          { width: 1152, height: 2048 },
+          { width: 2560, height: 1440 },
+          { width: 1440, height: 2560 },
         ],
         maxOutputs: 1,
         audio: "never",
@@ -116,4 +116,14 @@ test("provider configuration reserves the mock identifier for explicit test rout
     }),
     /provider id mock is reserved/,
   );
+});
+
+test("an Ark instance supports a non-secret API root but rejects credential-bearing URLs", () => {
+  const provider = { id: "private-ark", adapter: "volcengine-ark", baseUrl: "https://ark.example.test/api/v3" };
+  const parsed = parseProviderConfigurationFile({ version: 1, providers: [provider] });
+  assert.equal(parsed.providers[0]!.baseUrl, provider.baseUrl);
+  assert.equal(createConfiguredProviderAdapters(parsed.providers).length, 1);
+  for (const baseUrl of ["https://a:b@ark.example.test", "https://ark.example.test?api_key=example", "http://ark.example.test"]) {
+    assert.throws(() => parseProviderConfigurationFile({ version: 1, providers: [{ ...provider, baseUrl }] }), /HTTPS/);
+  }
 });

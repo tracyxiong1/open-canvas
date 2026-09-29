@@ -28,6 +28,8 @@ import {
 } from "@phosphor-icons/react";
 import referenceCanvasDemo from "./reference-canvas-demo.json";
 import { CanvasViewport } from "./CanvasViewport.jsx";
+import { RenderDialog } from "./RenderDialog.jsx";
+import "./local-workflows.css";
 import { createNodeClipboard, nextCopiedNodeTitle, pasteNodeClipboard } from "./canvas-clipboard.js";
 import { resolveDemoAssetUrl } from "./demo-assets.js";
 import { localAssetUrl, localProjectUrl, resolveBridgeAssetUrl } from "./local-project-bridge.js";
@@ -135,8 +137,13 @@ function ProjectHeader({
   onSave,
   canSave = false,
   isSaving = false,
+  onImportFiles,
+  onArchive,
+  onRender,
+  busy = false,
 }) {
   const inputRef = useRef(null);
+  const mediaRef = useRef(null);
   const draft = model.activeDraft;
   const complete = draft.statusCounts.succeeded ?? 0;
   const active = (draft.statusCounts.queued ?? 0) + (draft.statusCounts.running ?? 0);
@@ -159,7 +166,7 @@ function ProjectHeader({
       <div className="draft-control">
         <GitBranch aria-hidden="true" />
         <label htmlFor="draft-select">草稿</label>
-        <select id="draft-select" value={draft.id} aria-label="草稿" onChange={(event) => onDraftChange(event.target.value)}>
+        <select id="draft-select" value={draft.id} aria-label="草稿" disabled={busy} onChange={(event) => onDraftChange(event.target.value)}>
           {model.drafts.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
         </select>
         {draft.sourceDraftId ? <span className="variation-chip" title={`源草稿 ${draft.sourceDraftId}`}>变体</span> : null}
@@ -171,10 +178,17 @@ function ProjectHeader({
           {active ? <span className="summary-item active">{active} 进行中</span> : null}
           {pending ? <span className="summary-item pending">{pending} 待处理</span> : null}
         </div>
-        <button className="secondary-button" type="button" aria-label="打开" onClick={() => inputRef.current?.click()}>
+        <button className="secondary-button" type="button" aria-label="打开" disabled={busy} onClick={() => inputRef.current?.click()}>
           <FileArrowUp aria-hidden="true" /><span>打开</span>
         </button>
-        <input ref={inputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={onProjectFile} aria-label="打开项目 JSON 文档" />
+        <input ref={inputRef} className="visually-hidden" type="file" accept="application/json,.json,.ocanvas" onChange={onProjectFile} aria-label="打开项目 JSON 文档" />
+        {onImportFiles ? <details className="project-menu" onClick={(event) => { if (event.target.closest("button")) event.currentTarget.open = false; }}><summary>项目</summary><div>
+          <button type="button" disabled={busy} onClick={() => mediaRef.current?.click()}>导入素材</button>
+          <button type="button" disabled={busy} onClick={onArchive}>导出完整项目</button>
+          <button type="button" disabled={busy} onClick={onRender}>导出成片</button>
+          <small>拖入图片、视频或音频也可导入。打开 .ocanvas 可恢复完整项目。</small>
+        </div></details> : null}
+        <input ref={mediaRef} className="visually-hidden" type="file" multiple accept="image/*,video/*,audio/*" aria-label="导入媒体文件" onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; onImportFiles?.(files); }} />
         <button className="secondary-button primary-action" type="button" aria-label="导出 JSON" onClick={onDownload}>
           <DownloadSimple aria-hidden="true" /><span>导出 JSON</span>
         </button>
@@ -263,6 +277,9 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   const [bridgeLoading, setBridgeLoading] = useState(() => Boolean(localProjectUrl(projectUrl)));
   const [isSaving, setIsSaving] = useState(false);
   const [pendingExternalDocument, setPendingExternalDocument] = useState(null);
+  const [operation, setOperation] = useState(null);
+  const operationRef = useRef(false);
+  const [renderOpen, setRenderOpen] = useState(false);
   const savedProjectRevisionRef = useRef(null);
   const documentRef = useRef(document);
   const savedSnapshotRef = useRef(savedSnapshot);
@@ -408,6 +425,7 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   }, [document]);
 
   const runMutation = useCallback((message, mutate, afterCommit) => {
+    if (operationRef.current) return;
     try {
       const nextDocument = mutate(document);
       commitDocument(nextDocument, message);
@@ -420,7 +438,17 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   const handleProjectFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file) return;
+    if (!file || operationRef.current) return;
+    if (file.name.endsWith(".ocanvas")) {
+      if (!activeProjectUrl) { setNotice({ tone: "danger", message: "请通过 open-canvas open 打开本地项目后恢复项目包" }); return; }
+      await runLocalOperation("正在恢复项目", async () => {
+        const response = await fetch(bridgeEndpoint("/project/restore"), { method: "POST", body: file });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "无法恢复项目");
+        window.location.assign(payload.url);
+      });
+      return;
+    }
     try {
       const nextDocument = parseCanvasDocument(JSON.parse(await file.text()));
       const nextModel = buildModel(nextDocument, nextDocument.activeDraftId);
@@ -457,10 +485,11 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
     setNotice({ tone: "success", message: activeProjectUrl ? "项目 JSON 已导出；本地项目仍可继续保存" : "项目 JSON 已导出" });
   };
 
-  const handleSaveProject = useCallback(async () => {
-    if (!activeProjectUrl || isSaving || savedProjectRevisionRef.current === null || !isDirty) return;
-    const snapshot = document;
+  const saveLocalEdits = useCallback(async () => {
+    if (!activeProjectUrl || savedProjectRevisionRef.current === null) throw new Error("本地项目尚未连接");
+    const snapshot = documentRef.current;
     const snapshotText = serializeProject(snapshot);
+    if (snapshotText === savedSnapshotRef.current) return snapshot;
     const baseRevision = savedProjectRevisionRef.current;
     setIsSaving(true);
     try {
@@ -485,14 +514,78 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       } else {
         setNotice({ tone: "success", message: "已保存较早修改；仍有新的未保存编辑" });
       }
-    } catch (error) {
-      setNotice({ tone: "danger", message: error instanceof Error ? error.message : "无法保存本地项目" });
     } finally {
       setIsSaving(false);
     }
-  }, [activeProjectUrl, document, isDirty, isSaving]);
+    if (isDirtyRef.current) throw new Error("仍有新的未保存编辑，请再次保存后重试");
+    return documentRef.current;
+  }, [activeProjectUrl]);
+
+  const handleSaveProject = async () => {
+    try { await saveLocalEdits(); }
+    catch (error) { setNotice({ tone: "danger", message: error.message }); }
+  };
+
+  const bridgeEndpoint = (path, params = {}) => {
+    const url = new URL(activeProjectUrl); url.pathname = path;
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
+    return url.toString();
+  };
+  const runLocalOperation = async (message, execute) => {
+    if (operationRef.current) return;
+    operationRef.current = true; setOperation(message);
+    try { await saveLocalEdits(); await execute(); }
+    catch (error) { setNotice({ tone: "danger", message: error.message ?? "本地操作失败" }); }
+    finally { operationRef.current = false; setOperation(null); }
+  };
+  const downloadResponse = async (response, filename) => {
+    if (!response.ok) { const payload = await response.json(); throw new Error(payload.error ?? "下载失败"); }
+    const url = URL.createObjectURL(await response.blob());
+    const link = window.document.createElement("a"); link.href = url; link.download = filename; link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const handleImportFiles = (files, position = {}, nodeId) => runLocalOperation("正在导入素材", async () => {
+    for (const [index, file] of Array.from(files).entries()) {
+      const response = await fetch(bridgeEndpoint("/media", { filename: file.name, draft: draftId,
+        revision: savedProjectRevisionRef.current, ...(nodeId ? { node: nodeId } : {}),
+        ...(position.x !== undefined ? { x: position.x + index * 60, y: position.y + index * 60 } : {}) }), { method: "POST", body: file });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "导入失败");
+      applyBridgeDocument(parseCanvasDocument(payload.document));
+      setSelectedNodeId(payload.nodeId); setSelectedNodeIds([payload.nodeId]);
+    }
+    setNotice({ tone: "success", message: `已导入 ${files.length} 个素材并保存到本地项目` });
+  });
+  const handleGenerate = (nodeId, prompt) => {
+    if (operationRef.current) return;
+    const current = documentRef.current;
+    const draft = findCanonicalDraft(current, draftId);
+    const node = draft.nodes.find((item) => item.id === nodeId);
+    if (node?.spec.kind === "shot" && prompt.trim() && node.spec.prompt !== prompt.trim()) {
+      commitDocument(updateNode(current, { draftId, nodeId, spec: { ...node.spec, prompt: prompt.trim() }, expectedProjectRevision: current.revision, expectedDraftRevision: draft.revision }), "已应用提示词");
+    }
+    return runLocalOperation("正在生成，可在节点查看进度", async () => {
+      const response = await fetch(bridgeEndpoint("/generate"), { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ draftId, nodeId, baseRevision: savedProjectRevisionRef.current }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error ?? "生成失败");
+      applyBridgeDocument(parseCanvasDocument(payload.document));
+      const status = payload.result?.status;
+      setNotice({ tone: status === "failed" ? "danger" : "success", message: status === "succeeded" ? "生成完成，结果已保存" : status === "failed" ? "生成失败，请查看节点失败原因" : "任务仍在处理中，可点击继续查询" });
+    });
+  };
+  const handleArchive = () => runLocalOperation("正在打包项目与素材", async () => {
+    await downloadResponse(await fetch(bridgeEndpoint("/project/archive")), `${model.project.title}.ocanvas`);
+    setNotice({ tone: "success", message: "完整项目包已下载，包含项目文档与所有媒体" });
+  });
+  const handleRender = (settings) => runLocalOperation("正在导出成片", async () => {
+    await downloadResponse(await fetch(bridgeEndpoint("/render"), { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...settings, draftId, baseRevision: savedProjectRevisionRef.current }) }), `${model.project.title}.mp4`);
+    setRenderOpen(false); setNotice({ tone: "success", message: "成片已导出" });
+  });
 
   const handleUndo = useCallback(() => {
+    if (operationRef.current) return;
     const previous = undoStack.at(-1);
     if (!previous) return;
     setUndoStack((items) => items.slice(0, -1));
@@ -504,6 +597,7 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
   }, [document, undoStack]);
 
   const handleRedo = useCallback(() => {
+    if (operationRef.current) return;
     const next = redoStack[0];
     if (!next) return;
     setRedoStack((items) => items.slice(1));
@@ -645,7 +739,7 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         ...(mediaKind === "audio" ? { voice: "coral", speed: 1, mediaType: "audio/wav" } : {
         aspectRatio: "16:9",
         ...(mediaKind === "image"
-          ? { width: 2048, height: 1152, audio: "forbidden" }
+          ? { width: 2560, height: 1440, audio: "forbidden" }
           // Do not invent a fixed video duration for a new node. The default
           // configured video route advertises no exact duration guarantee;
           // users may add an explicit duration in the node's output settings.
@@ -939,8 +1033,12 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         onProjectFile={handleProjectFile}
         onDownload={handleDownload}
         onSave={activeProjectUrl ? handleSaveProject : undefined}
-        canSave={!bridgeLoading && isDirty}
+        canSave={!bridgeLoading && !operation && isDirty}
         isSaving={isSaving}
+        busy={Boolean(operation)}
+        onImportFiles={activeProjectUrl ? handleImportFiles : undefined}
+        onArchive={handleArchive}
+        onRender={() => setRenderOpen(true)}
       />
       <CanvasViewport
         draft={model.activeDraft}
@@ -967,11 +1065,14 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
         onUpdateRequirements={handleUpdateRequirements}
         onSelectOutput={handleSelectOutput}
         onResetGeneration={handleResetGeneration}
+        onImportFiles={activeProjectUrl ? handleImportFiles : undefined}
+        onGenerate={activeProjectUrl ? handleGenerate : undefined}
+        isWorking={Boolean(operation)}
         onExpandScript={handleExpandScript}
         onCreateVariation={handleCreateVariation}
         onArrange={handleArrange}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        canUndo={!operation && undoStack.length > 0}
+        canRedo={!operation && redoStack.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
       />
@@ -992,6 +1093,8 @@ export function App({ initialDocument = referenceCanvasDemo, projectUrl = null, 
       ) : null}
 
       <AssetDialog preview={preview} onClose={() => setPreview(null)} />
+      {operation ? <div className="operation-status" role="status">{operation}…</div> : null}
+      {renderOpen ? <RenderDialog document={document} draftId={draftId} selectedNodeIds={selectedNodeIds} onClose={() => setRenderOpen(false)} onRender={handleRender} busy={Boolean(operation)} /> : null}
     </main>
   );
 }

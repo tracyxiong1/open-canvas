@@ -380,7 +380,8 @@ test("CLI creates, connects, generates, inspects, previews, and exports from pro
   });
 
   const preview = await cli(["open", "--project", projectDir, "--no-open"]);
-  assert.match(preview.url, /^http:\/\/127\.0\.0\.1:4173\//);
+  assert.equal(new URL(preview.url).origin, preview.bridgeUrl);
+  assert.match(await (await fetch(preview.url)).text(), /<div id="root">/);
   assert.equal(preview.draftId, initialized.activeDraftId);
   const previewProjectUrl = new URL(preview.url).searchParams.get("project-url");
   assert.ok(previewProjectUrl);

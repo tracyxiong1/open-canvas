@@ -33,6 +33,7 @@ export type ProviderConfiguration = {
   id: string;
   adapter: BuiltInProviderAdapter;
   credentialEnv?: string;
+  baseUrl?: string;
   models?: ProviderModels;
   priority?: number;
 };
@@ -144,7 +145,7 @@ function parseModels(value: unknown, adapter: BuiltInProviderAdapter): ProviderM
 
 function parseProviderConfiguration(value: unknown): ProviderConfiguration {
   const provider = asObject(value, "provider configuration must be an object");
-  assertOnlyKeys(provider, ["id", "adapter", "credentialEnv", "models", "priority"], "provider configuration");
+  assertOnlyKeys(provider, ["id", "adapter", "credentialEnv", "baseUrl", "models", "priority"], "provider configuration");
   const id = requiredString(provider.id, "provider id");
   if (!IDENTIFIER_PATTERN.test(id)) {
     throw new CliUsageError("provider id must use lowercase letters, digits, and hyphens");
@@ -163,10 +164,19 @@ function parseProviderConfiguration(value: unknown): ProviderConfiguration {
     throw new CliUsageError("provider priority must be a non-negative integer");
   }
   const models = parseModels(provider.models, adapter);
+  const baseUrl = optionalString(provider.baseUrl, "provider baseUrl");
+  if (baseUrl !== undefined) {
+    let parsed: URL;
+    try { parsed = new URL(baseUrl); } catch { throw new CliUsageError("provider baseUrl must be a valid HTTPS URL"); }
+    if (adapter !== "volcengine-ark" || parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash) {
+      throw new CliUsageError("baseUrl is supported only for Ark and must use HTTPS without credentials, query or fragment");
+    }
+  }
   return {
     id,
     adapter,
     ...(credentialEnv === undefined ? {} : { credentialEnv }),
+    ...(baseUrl === undefined ? {} : { baseUrl }),
     ...(models === undefined ? {} : { models }),
     ...(priority === undefined ? {} : { priority: priority as number }),
   };
@@ -224,6 +234,7 @@ export function createConfiguredProviderAdapters(configurations: readonly Provid
       case "volcengine-ark":
         return new VolcengineArkAdapter({
           providerId: configuration.id,
+          ...(configuration.baseUrl === undefined ? {} : { baseUrl: configuration.baseUrl }),
           ...(configuration.credentialEnv === undefined ? {} : { credentialEnv: configuration.credentialEnv }),
           ...(configuration.models === undefined
             ? {}
